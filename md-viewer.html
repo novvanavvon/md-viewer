@@ -1,0 +1,905 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="A readable, searchable reference view for Markdown documents.">
+  <title>MD File Reader</title>
+  <style>
+    :root {
+      --paper: #081018;
+      --paper-deep: #101d28;
+      --surface: #101c27;
+      --surface-raised: #142532;
+      --acrylic: rgba(16, 29, 40, .72);
+      --ink: #c8ccce;
+      --muted: #91a8b1;
+      --line: rgba(168, 213, 220, .16);
+      --blue: #7fd7df;
+      --blue-dark: #dff8f7;
+      --amber: #e6b16a;
+      --amber-soft: rgba(230, 177, 106, .14);
+      --cyan-soft: rgba(127, 215, 223, .08);
+      --shadow: 0 24px 70px rgba(0, 0, 0, .28);
+      --radius: 14px;
+      --sidebar: 292px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      position: relative;
+      isolation: isolate;
+      background: var(--paper) url('background/background\ 1.jpeg') center / cover fixed no-repeat;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.65;
+    }
+    body::before,
+    body::after {
+      position: fixed;
+      z-index: -1;
+      inset: 0;
+      pointer-events: none;
+      content: '';
+    }
+    body::before {
+      background: url('1156125.jpg.jpeg') center / cover no-repeat;
+      filter: blur(20px) saturate(115%);
+      opacity: .28;
+      transform: scale(1.08);
+    }
+    body::after {
+      background: linear-gradient(115deg, rgba(3, 10, 16, .86), rgba(6, 20, 28, .66) 48%, rgba(5, 12, 20, .82));
+    }
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    :focus-visible { outline: 3px solid var(--amber); outline-offset: 3px; }
+
+    .app-shell { position: relative; z-index: 0; min-height: 100vh; }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      min-height: 76px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 14px 30px;
+      background: var(--acrylic);
+      border-bottom: 1px solid var(--line);
+      box-shadow: 0 1px 0 rgba(127, 215, 223, .04), 0 12px 40px rgba(0, 0, 0, .12);
+      backdrop-filter: blur(18px) saturate(125%);
+    }
+    .brand { display: flex; align-items: center; gap: 13px; min-width: 220px; }
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 40px;
+      height: 40px;
+      color: var(--paper);
+      background: var(--blue);
+      border-radius: 11px 11px 11px 3px;
+      font: 700 16px/1 Arial, sans-serif;
+      letter-spacing: -.08em;
+    }
+    .brand-title { margin: 0; font: 700 17px/1.1 Arial, sans-serif; letter-spacing: -.02em; }
+    .brand-subtitle { margin: 4px 0 0; color: var(--muted); font: 12px/1.2 Arial, sans-serif; }
+    .toolbar { display: flex; align-items: center; gap: 10px; }
+    .search-wrap { position: relative; width: min(390px, 38vw); }
+    .search-wrap::before { content: '⌕'; position: absolute; left: 13px; top: 7px; color: var(--muted); font: 22px/1 Arial, sans-serif; }
+    #search {
+      width: 100%;
+      height: 42px;
+      padding: 0 15px 0 38px;
+      color: var(--ink);
+      background: rgba(12, 23, 32, .78);
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      font: 14px Arial, sans-serif;
+    }
+    .tool-button {
+      height: 42px;
+      padding: 0 14px;
+      color: var(--blue-dark);
+      background: rgba(127, 215, 223, .04);
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      font: 700 12px Arial, sans-serif;
+    }
+    .tool-button:hover { background: var(--cyan-soft); }
+
+    .layout { display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); align-items: start; }
+    .sidebar {
+      position: sticky;
+      top: 76px;
+      height: calc(100vh - 76px);
+      overflow: auto;
+      padding: 28px 22px 35px 30px;
+      border-right: 1px solid var(--line);
+      scrollbar-color: rgba(184, 203, 208, .34) transparent;
+      scrollbar-width: thin;
+    }
+    .sidebar::-webkit-scrollbar { width: 5px; }
+    .sidebar::-webkit-scrollbar-track { background: transparent; }
+    .sidebar::-webkit-scrollbar-thumb { background: rgba(184, 203, 208, .34); border-radius: 999px; }
+    .sidebar::-webkit-scrollbar-thumb:hover { background: rgba(184, 203, 208, .56); }
+    .sidebar-label { margin: 0 0 12px; color: var(--amber); font: 700 11px Arial, sans-serif; letter-spacing: .12em; text-transform: uppercase; }
+    .progress-track { height: 4px; margin: 0 0 23px; overflow: hidden; background: var(--paper-deep); border-radius: 99px; }
+    .progress-bar { width: 0; height: 100%; background: var(--amber); transition: width .15s linear; }
+    #toc { display: grid; gap: 4px; }
+    .toc-link {
+      display: block;
+      padding: 7px 9px;
+      color: var(--muted);
+      border-left: 2px solid transparent;
+      text-decoration: none;
+      font: 12px/1.35 Arial, sans-serif;
+    }
+    .toc-link:hover, .toc-link.active { color: var(--blue-dark); background: var(--cyan-soft); border-left-color: var(--amber); }
+    .toc-link.level-1 { margin-top: 8px; color: var(--blue-dark); font-weight: 700; }
+    .toc-link.level-2 { padding-left: 20px; }
+    .toc-link.level-3 { padding-left: 31px; font-size: 11px; }
+
+    main { min-width: 0; padding: 54px clamp(24px, 5vw, 80px) 100px; background: linear-gradient(180deg, rgba(8, 16, 24, .26), rgba(8, 16, 24, .68) 28%, rgba(8, 16, 24, .82)); }
+    .document { max-width: 970px; margin: 0 auto; }
+    .document-header { padding: 20px 0 48px; border-bottom: 1px solid var(--line); }
+    .draft-note { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 20px; color: var(--amber); background: var(--amber-soft); border: 1px solid rgba(230, 177, 106, .3); border-radius: 6px; padding: 5px 10px; font: 700 11px Arial, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
+    .draft-note::before { content: ''; width: 7px; height: 7px; background: var(--amber); border-radius: 50%; }
+    h1, h2, h3, h4 { color: var(--blue-dark); font-weight: 700; line-height: 1.15; }
+    h1 { max-width: 760px; margin: 0 0 14px; font-size: clamp(38px, 5vw, 66px); letter-spacing: -.045em; }
+    .lede { max-width: 700px; margin: 0; color: var(--muted); font-size: 18px; }
+    .doc-meta { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 25px; color: var(--muted); font: 12px Arial, sans-serif; }
+    .doc-meta strong { color: var(--blue-dark); }
+    .doc-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 28px 0 50px; }
+    .summary-card { padding: 18px; background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+    .summary-card strong { display: block; margin-bottom: 4px; color: var(--blue); font: 700 23px Arial, sans-serif; }
+    .summary-card span { color: var(--muted); font: 12px/1.35 Arial, sans-serif; }
+    .file-picker-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .file-picker-input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
+    .file-picker-label { display: inline-flex; align-items: center; height: 42px; padding: 0 14px; color: var(--blue-dark); background: rgba(127, 215, 223, .04); border: 1px solid var(--line); border-radius: 9px; font: 700 12px Arial, sans-serif; cursor: pointer; }
+    .file-picker-label:hover { background: var(--cyan-soft); }
+    .file-picker-input:focus-visible + .file-picker-label { outline: 3px solid var(--amber); outline-offset: 3px; }
+    .file-picker-name { color: var(--muted); font: 12px Arial, sans-serif; }
+    .file-picker-status { display: none; align-items: center; gap: 9px; color: var(--muted); font: 12px Arial, sans-serif; }
+    .file-picker-status.visible { display: flex; }
+    .file-picker-spinner { width: 14px; height: 14px; border: 2px solid rgba(127, 215, 223, .25); border-top-color: var(--blue); border-radius: 50%; animation: file-picker-spin .6s linear infinite; }
+    @keyframes file-picker-spin { to { transform: rotate(360deg); } }
+    .source-picker { margin-top: 22px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-raised); overflow: hidden; }
+    .source-picker-summary { display: flex; align-items: center; gap: 9px; padding: 13px 16px; color: var(--blue-dark); font: 700 12px Arial, sans-serif; letter-spacing: .01em; cursor: pointer; list-style: none; }
+    .source-picker-summary::-webkit-details-marker { display: none; }
+    .source-picker-summary::before { content: '▸'; color: var(--muted); font-size: 11px; transition: transform .15s ease; }
+    .source-picker[open] .source-picker-summary::before { transform: rotate(90deg); }
+    .source-picker-summary:hover { background: var(--cyan-soft); }
+    .source-picker-body { padding: 2px 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+    .source-picker-hint { margin: 0; color: var(--muted); font: 12px/1.4 Arial, sans-serif; }
+
+    #content > h1:first-of-type { display: none; }
+    #content h2 { margin: 62px 0 18px; padding-top: 18px; border-top: 1px solid var(--line); font-size: clamp(27px, 3vw, 38px); letter-spacing: -.03em; scroll-margin-top: 100px; }
+    #content h3 { margin: 40px 0 13px; font-size: 24px; scroll-margin-top: 100px; }
+    #content h4 { margin: 28px 0 9px; font: 700 17px Arial, sans-serif; scroll-margin-top: 100px; }
+    #content p, #content ol, #content ul { max-width: 850px; }
+    #content a { color: var(--blue); }
+    #content strong { color: var(--blue-dark); }
+    #content blockquote { margin: 22px 0; padding: 14px 20px; background: var(--amber-soft); border-left: 4px solid var(--amber); }
+    #content code { padding: 2px 5px; color: var(--blue-dark); background: var(--paper-deep); border-radius: 4px; font: 12px Consolas, monospace; }
+    #content pre { max-width: 100%; overflow: auto; padding: 20px; background: #142d38; border-radius: 10px; color: #f4fbfc; font: 12px/1.55 Consolas, monospace; box-shadow: 0 10px 25px rgba(0, 0, 0, .22); }
+    #content pre code { padding: 0; color: inherit; background: transparent; }
+    .table-scroll { width: 100%; margin: 22px 0 30px; overflow-x: auto; background: #0c1d29; border: 1px solid var(--line); border-radius: 9px; scrollbar-color: rgba(184, 203, 208, .34) transparent; scrollbar-width: thin; }
+    .table-scroll::-webkit-scrollbar, .diagram-frame::-webkit-scrollbar { width: 5px; height: 5px; }
+    .table-scroll::-webkit-scrollbar-track, .diagram-frame::-webkit-scrollbar-track { background: transparent; }
+    .table-scroll::-webkit-scrollbar-thumb, .diagram-frame::-webkit-scrollbar-thumb { background: rgba(184, 203, 208, .34); border-radius: 999px; }
+    .table-scroll::-webkit-scrollbar-thumb:hover, .diagram-frame::-webkit-scrollbar-thumb:hover { background: rgba(184, 203, 208, .56); }
+    #content table { width: 100%; min-width: 620px; margin: 0; border-collapse: collapse; background: #0c1d29; font-size: 14px; }
+    #content th, #content td { min-width: 145px; padding: 11px 13px; color: #f4fbfc; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+    #content th { color: #ffffff; background: #1c5263; font: 700 11px Arial, sans-serif; letter-spacing: .06em; text-transform: uppercase; }
+    #content tr:nth-child(even) td { background: #102735; }
+    #content tr:last-child td { border-bottom: 0; }
+    .front-matter-table td:first-child { width: 220px; min-width: 160px; color: var(--muted); background: var(--paper-deep); font: 700 12px Arial, sans-serif; text-transform: uppercase; letter-spacing: .04em; }
+    .front-matter-table td:last-child { font: 13px Consolas, monospace; word-break: break-word; }
+    #content table.table-paginated tr:nth-child(even) td { background: transparent; }
+    #content table.table-paginated tr.table-row-alt td { background: #102735; }
+    .table-row-hidden { display: none !important; }
+    .table-block { margin: 22px 0 30px; }
+    .table-block .table-scroll { margin: 12px 0 0; }
+    .table-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+    .table-search-wrap { position: relative; flex: 1; min-width: 180px; max-width: 320px; }
+    .table-search-wrap::before { content: '⌕'; position: absolute; left: 11px; top: 5px; color: var(--muted); font: 18px/1 Arial, sans-serif; }
+    .table-search {
+      width: 100%;
+      height: 36px;
+      padding: 0 12px 0 32px;
+      color: var(--ink);
+      background: rgba(12, 23, 32, .78);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font: 13px Arial, sans-serif;
+    }
+    .table-page-size { display: flex; align-items: center; gap: 8px; color: var(--muted); font: 12px Arial, sans-serif; white-space: nowrap; }
+    .table-page-size-select {
+      height: 36px;
+      padding: 0 10px;
+      color: var(--ink);
+      background: rgba(12, 23, 32, .78);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font: 13px Arial, sans-serif;
+    }
+    .table-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 10px 0 0; color: var(--muted); font: 12px Arial, sans-serif; }
+    .table-pager-controls { display: flex; align-items: center; gap: 10px; }
+    .table-pager-btn {
+      height: 30px;
+      padding: 0 12px;
+      color: var(--blue-dark);
+      background: rgba(127, 215, 223, .04);
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      font: 700 11px Arial, sans-serif;
+    }
+    .table-pager-btn:hover:not(:disabled) { background: var(--cyan-soft); }
+    .table-pager-btn:disabled { opacity: .4; cursor: default; }
+    .diagram-frame { position: relative; min-height: 170px; margin: 22px 0 30px; overflow: auto; background: #0b1a25; border: 1px solid rgba(127, 215, 223, .28); border-radius: 10px; scrollbar-width: none; -ms-overflow-style: none; }
+    .diagram-frame::-webkit-scrollbar { display: none; }
+    .mermaid { min-width: 100%; min-height: 170px; padding: 42px 20px 20px; background: #0b1a25; text-align: center; transform-origin: center center; user-select: none; cursor: grab; }
+    .mermaid.is-dragging { cursor: grabbing; }
+    .mermaid svg { display: inline-block; max-width: none; height: auto; vertical-align: middle; }
+    .diagram-controls { position: absolute; z-index: 2; top: 10px; right: 10px; display: flex; gap: 5px; padding: 4px; background: rgba(7, 16, 24, .86); border: 1px solid rgba(127, 215, 223, .22); border-radius: 8px; backdrop-filter: blur(12px); }
+    .diagram-controls button { display: grid; place-items: center; width: 30px; height: 28px; padding: 0; color: var(--ink); background: transparent; border: 0; border-radius: 5px; font: 700 16px/1 Arial, sans-serif; }
+    .diagram-controls svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+    .diagram-controls button:hover { color: #081018; background: var(--blue); }
+    .search-hidden { display: none !important; }
+    .empty-search { display: none; padding: 28px 0; color: var(--muted); text-align: center; font-style: italic; }
+    .empty-search.visible { display: block; }
+    .mobile-menu { display: none; }
+    .sidebar-actions { display: none; }
+    .sidebar-print { display: none; }
+
+    @media (max-width: 840px) {
+      .topbar { padding: 12px 17px; }
+      .brand { min-width: 0; }
+      .brand-subtitle { display: none; }
+      .toolbar { flex: 1; justify-content: flex-end; }
+      .search-wrap { width: min(310px, 57vw); }
+      .tool-button { width: 42px; padding: 0; font-size: 0; }
+      .tool-button::after { content: '☰'; font-size: 17px; }
+      .layout { display: block; }
+      .sidebar { position: fixed; z-index: 9; top: 66px; right: 0; left: auto; width: min(320px, 88vw); height: calc(100vh - 66px); padding: 25px; background: var(--acrylic); box-shadow: -15px 15px 30px rgba(0, 0, 0, .28); backdrop-filter: blur(18px) saturate(125%); transform: translateX(105%); transition: transform .2s ease; }
+      .sidebar.open { transform: translateX(0); }
+      .sidebar-actions { display: flex; gap: 10px; margin: 0 0 22px; }
+      .sidebar-actions .tool-button { flex: 1; width: auto; height: 42px; padding: 0 14px; font-size: 12px; }
+      .sidebar-actions .tool-button::after { content: none; }
+      .mobile-menu { display: block; }
+      .tool-button#print, .tool-button#filter { display: none; }
+      main { padding: 32px 18px 70px; }
+      .doc-summary { grid-template-columns: 1fr; }
+      .document-header { padding-top: 10px; }
+      h1 { font-size: clamp(38px, 12vw, 58px); }
+      .lede { font-size: 16px; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; animation: none !important; } }
+    @media print {
+      .topbar, .sidebar, .doc-summary, .draft-note, .source-picker { display: none !important; }
+      .document-header > h1, .document-header > .lede { display: none !important; }
+      main { padding: 0; background: #fff; }
+      .document { max-width: none; }
+      .document-header { padding-top: 0; }
+      #content h2 { break-before: page; }
+      #content pre, #content table, .mermaid { break-inside: avoid; }
+      body::before, body::after { display: none !important; }
+      body { background: #fff; color: #111; }
+      #content h1, #content h2, #content h3, #content h4, #content strong { color: #111; }
+      #content table, .table-scroll { background: #fff; border-color: #aaa; }
+      #content th { color: #fff; background: #244f5b; }
+      #content td { color: #111; }
+      #content tr:nth-child(even) td { background: #f2f2f2; }
+      #content code { color: #0b3a45; background: #e7eef0; font-weight: 700; }
+      #content a { color: #14515f; font-weight: 700; }
+      #content pre { overflow: visible !important; white-space: pre-wrap !important; word-break: break-word; font-size: 9px; box-shadow: none; background: #142d38; color: #f4fbfc; border: 1.5px solid #7fd7df; }
+      .diagram-frame, .mermaid { background: #fff; border-color: #aaa; }
+      .diagram-controls { display: none; }
+      .table-toolbar, .table-pager { display: none !important; }
+      .table-row-hidden { display: table-row !important; }
+      #content table.table-paginated tr:nth-child(even) td { background: #f2f2f2; }
+      .front-matter-table td:first-child { background: #eef2f3; color: #244f5b; }
+      .front-matter-table td:last-child { color: #111; }
+    }
+    .print-ready::before, .print-ready::after { display: none !important; }
+    .print-ready { background: #fff !important; }
+    .print-ready .topbar, .print-ready .sidebar, .print-ready .doc-summary, .print-ready .draft-note { display: none !important; }
+    .print-ready main { padding: 0; background: #fff; }
+
+    .filter-hidden { display: none !important; }
+    .modal-overlay { position: fixed; z-index: 50; inset: 0; display: flex; align-items: center; justify-content: center; padding: 20px; background: rgba(4, 10, 16, .6); backdrop-filter: blur(4px); }
+    .modal-overlay[hidden] { display: none; }
+    .modal-box { display: flex; flex-direction: column; width: min(480px, 100%); max-height: min(640px, 86vh); background: var(--surface-raised); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+    .modal-header h2 { margin: 0; color: var(--blue-dark); font: 700 15px Arial, sans-serif; }
+    .modal-close { display: grid; place-items: center; width: 30px; height: 30px; color: var(--muted); background: transparent; border: 0; border-radius: 6px; font-size: 18px; }
+    .modal-close:hover { color: var(--blue-dark); background: var(--cyan-soft); }
+    .modal-body { flex: 1; padding: 16px 20px; overflow: auto; }
+    .modal-hint { margin: 0 0 14px; color: var(--muted); font: 12px/1.4 Arial, sans-serif; }
+    .filter-select-all { display: flex; align-items: center; gap: 9px; margin: 0 0 12px; padding-bottom: 10px; color: var(--blue-dark); font: 700 12px Arial, sans-serif; border-bottom: 1px solid var(--line); cursor: pointer; }
+    .filter-select-all input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--blue); cursor: pointer; }
+    .filter-tree, .filter-tree ul { margin: 0; padding: 0; list-style: none; }
+    .filter-tree ul { margin-top: 4px; padding-left: 22px; }
+    .filter-node { margin: 6px 0; }
+    .filter-node > label { display: flex; align-items: center; gap: 9px; color: var(--ink); font: 13px Arial, sans-serif; cursor: pointer; }
+    .filter-node.level-2 > label { color: var(--blue-dark); font-weight: 700; }
+    .filter-node input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--blue); cursor: pointer; }
+    .modal-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 14px 20px; border-top: 1px solid var(--line); }
+    .modal-btn { height: 38px; padding: 0 16px; color: var(--blue-dark); background: rgba(127, 215, 223, .04); border: 1px solid var(--line); border-radius: 8px; font: 700 12px Arial, sans-serif; }
+    .modal-btn:hover { background: var(--cyan-soft); }
+    .modal-btn.primary { color: var(--paper); background: var(--blue); border-color: var(--blue); }
+    .modal-btn.primary:hover { background: var(--blue-dark); }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">M/</div>
+        <div>
+          <p class="brand-title">MD File Reader</p>
+          <p class="brand-subtitle">Markdown document viewer</p>
+        </div>
+      </div>
+      <div class="toolbar">
+        <label class="search-wrap">
+          <span class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">Search document</span>
+          <input id="search" type="search" placeholder="Search this document" autocomplete="off">
+        </label>
+        <button class="tool-button mobile-menu" type="button" aria-label="Open contents" aria-expanded="false">Contents</button>
+        <button class="tool-button" id="filter" type="button" aria-label="Filter document contents">Filter</button>
+        <button class="tool-button" id="print" type="button" aria-label="Print document">Print</button>
+      </div>
+    </header>
+
+    <div class="layout">
+      <aside class="sidebar" id="sidebar" aria-label="Document contents">
+        <div class="sidebar-actions">
+          <button class="tool-button" id="filter-mobile" type="button" aria-label="Filter document contents">Filter</button>
+          <button class="tool-button" id="print-mobile" type="button" aria-label="Print document">Print</button>
+        </div>
+        <p class="sidebar-label">Contents</p>
+        <div class="progress-track" aria-label="Reading progress"><div class="progress-bar" id="progress"></div></div>
+        <nav id="toc"></nav>
+      </aside>
+      <main>
+        <article class="document">
+          <header class="document-header">
+            <div class="draft-note">Draft without direction · reader view</div>
+            <h1>MD File Reader</h1>
+            <p class="lede">A structured, searchable reading view for any Markdown document — headings, tables, and diagrams rendered inline.</p>
+            <div class="doc-meta">
+              <span><strong>Source:</strong> <code id="source-name">Loading…</code></span>
+            </div>
+            <details class="source-picker" id="source-picker">
+              <summary class="source-picker-summary">Open a Markdown file</summary>
+              <div class="source-picker-body">
+                <p class="source-picker-hint">Load <code>.md</code> file into this to view</p>
+                <div class="file-picker-row">
+                  <input id="file-picker" class="file-picker-input" type="file" accept=".md,.markdown,text/markdown">
+                  <label class="file-picker-label" for="file-picker">Choose file</label>
+                  <span class="file-picker-name" id="file-picker-name">No file selected</span>
+                </div>
+                <div class="file-picker-status" id="file-picker-status"><span class="file-picker-spinner" aria-hidden="true"></span><span>Rendering document…</span></div>
+              </div>
+            </details>
+          </header>
+          <div class="doc-summary" aria-label="Document summary">
+            <!-- <div class="summary-card"><strong>10</strong><span>modules described in the current WBS</span></div>
+            <div class="summary-card"><strong>87</strong><span>features covered by the proposed flows</span></div>
+            <div class="summary-card"><strong>4</strong><span>handoff audiences: FE, API, QA and UAT</span></div> -->
+          </div>
+          <div id="content"><p>Loading document...</p></div>
+          <p class="empty-search" id="empty-search">No matching sections. Try a broader search term.</p>
+        </article>
+      </main>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="filter-modal" hidden>
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="filter-modal-title">
+      <div class="modal-header">
+        <h2 id="filter-modal-title">Filter contents</h2>
+        <button class="modal-close" id="filter-modal-close" type="button" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-hint">Choose which sections stay visible. Enabling a section enables its subsections; enabling a subsection also enables its section.</p>
+        <label class="filter-select-all">
+          <input type="checkbox" id="filter-select-all">
+          <span>Select all</span>
+        </label>
+        <div id="filter-tree"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn" id="filter-cancel" type="button">Cancel</button>
+        <button class="modal-btn primary" id="filter-save" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script>
+    const sourcePath = 'your_md_file.md';
+    const content = document.getElementById('content');
+    const toc = document.getElementById('toc');
+    const search = document.getElementById('search');
+    const sidebar = document.getElementById('sidebar');
+    const progress = document.getElementById('progress');
+    const emptySearch = document.getElementById('empty-search');
+
+    marked.setOptions({ gfm: true, breaks: false });
+
+    const screenDiagramTheme = { primaryColor: '#142532', primaryTextColor: '#c8ccce', primaryBorderColor: '#7fd7df', lineColor: '#7fd7df', secondaryColor: '#101c27', tertiaryColor: '#081018', fontFamily: 'Arial', rowOdd: '#101c27', rowEven: '#142532' };
+    const printDiagramTheme = { primaryColor: '#eef4f5', primaryTextColor: '#0b1420', primaryBorderColor: '#1c5263', lineColor: '#1c5263', secondaryColor: '#dbe9ea', tertiaryColor: '#ffffff', fontFamily: 'Arial', rowOdd: '#ffffff', rowEven: '#e8eef0' };
+
+    async function applyDiagramTheme(themeVariables) {
+      const diagrams = [...content.querySelectorAll('.mermaid[data-mermaid-src]')].filter(diagram => diagram.offsetParent !== null);
+      if (!diagrams.length) return;
+      diagrams.forEach(diagram => {
+        diagram.removeAttribute('data-processed');
+        diagram.textContent = decodeURIComponent(diagram.getAttribute('data-mermaid-src'));
+      });
+      mermaid.initialize({ startOnLoad: false, theme: 'base', themeVariables });
+      await mermaid.run({ querySelector: '.mermaid' });
+    }
+
+    const TABLE_PAGINATION_ROW_THRESHOLD = 10;
+
+    function paginateTable(table) {
+      const tbody = table.querySelector('tbody') || table;
+      const allRows = [...tbody.querySelectorAll('tr')];
+      if (allRows.length <= TABLE_PAGINATION_ROW_THRESHOLD) return;
+
+      table.classList.add('table-paginated');
+      const wrapper = table.closest('.table-scroll');
+
+      const block = document.createElement('div');
+      block.className = 'table-block';
+      wrapper.parentNode.insertBefore(block, wrapper);
+
+      const toolbar = document.createElement('div');
+      toolbar.className = 'table-toolbar';
+      toolbar.innerHTML = `
+        <label class="table-search-wrap">
+          <span class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">Search this table</span>
+          <input type="search" class="table-search" placeholder="Search this table" autocomplete="off">
+        </label>
+        <label class="table-page-size">Rows per page
+          <select class="table-page-size-select">
+            <option value="10" selected>10</option>
+            <option value="25">25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+          </select>
+        </label>
+      `;
+      block.appendChild(toolbar);
+      block.appendChild(wrapper);
+
+      const pager = document.createElement('div');
+      pager.className = 'table-pager';
+      block.appendChild(pager);
+
+      const searchInput = toolbar.querySelector('.table-search');
+      const pageSizeSelect = toolbar.querySelector('.table-page-size-select');
+      let filteredRows = allRows;
+      let currentPage = 1;
+
+      function render() {
+        const pageSize = parseInt(pageSizeSelect.value, 10);
+        const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+        currentPage = Math.min(currentPage, totalPages);
+        const start = (currentPage - 1) * pageSize;
+        const end = start + pageSize;
+        const visibleRows = filteredRows.slice(start, end);
+        allRows.forEach(row => { row.classList.add('table-row-hidden'); row.classList.remove('table-row-alt'); });
+        visibleRows.forEach((row, index) => {
+          row.classList.remove('table-row-hidden');
+          row.classList.toggle('table-row-alt', index % 2 === 1);
+        });
+
+        pager.innerHTML = '';
+        const info = document.createElement('span');
+        info.className = 'table-pager-info';
+        info.textContent = filteredRows.length === 0
+          ? 'No matching rows'
+          : `Showing ${start + 1}–${Math.min(end, filteredRows.length)} of ${filteredRows.length} rows`;
+        pager.appendChild(info);
+        if (filteredRows.length === 0) return;
+
+        const controls = document.createElement('div');
+        controls.className = 'table-pager-controls';
+        const prevBtn = document.createElement('button');
+        prevBtn.type = 'button';
+        prevBtn.className = 'table-pager-btn';
+        prevBtn.textContent = 'Prev';
+        prevBtn.disabled = currentPage <= 1;
+        prevBtn.addEventListener('click', () => { currentPage--; render(); });
+        const pageInfo = document.createElement('span');
+        pageInfo.className = 'table-pager-page';
+        pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+        const nextBtn = document.createElement('button');
+        nextBtn.type = 'button';
+        nextBtn.className = 'table-pager-btn';
+        nextBtn.textContent = 'Next';
+        nextBtn.disabled = currentPage >= totalPages;
+        nextBtn.addEventListener('click', () => { currentPage++; render(); });
+        controls.append(prevBtn, pageInfo, nextBtn);
+        pager.appendChild(controls);
+      }
+
+      searchInput.addEventListener('input', () => {
+        const query = searchInput.value.trim().toLowerCase();
+        filteredRows = !query ? allRows : allRows.filter(row => row.textContent.toLowerCase().includes(query));
+        currentPage = 1;
+        render();
+      });
+      pageSizeSelect.addEventListener('change', () => { currentPage = 1; render(); });
+      render();
+    }
+
+    function slugify(value) {
+      return value.toLowerCase().replace(/<[^>]+>/g, '').replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    }
+
+    function escapeHtml(value) {
+      return value.replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
+    }
+
+    function markdownRenderer() {
+      const renderer = new marked.Renderer();
+      renderer.code = ({ text, lang }) => {
+        if (lang === 'mermaid') return `<div class="diagram-frame"><div class="diagram-controls" aria-label="Diagram controls"><button type="button" data-diagram-action="zoom-out" aria-label="Zoom out" title="Zoom out">−</button><button type="button" data-diagram-action="reset" aria-label="Reset diagram view" title="Reset view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.34-5.66L4 8.68"></path><path d="M4 4v4.68h4.68"></path></svg></button><button type="button" data-diagram-action="zoom-in" aria-label="Zoom in" title="Zoom in">+</button></div><div class="mermaid" data-mermaid-src="${encodeURIComponent(text)}">${escapeHtml(text)}</div></div>`;
+        return `<pre><code>${escapeHtml(text)}</code></pre>`;
+      };
+      return renderer;
+    }
+
+    function buildToc() {
+      toc.innerHTML = '';
+      const usedIds = new Set();
+      content.querySelectorAll('h2, h3, h4').forEach((heading, index) => {
+        const base = slugify(heading.textContent) || `section-${index}`;
+        let id = base;
+        let suffix = 2;
+        while (usedIds.has(id)) { id = `${base}-${suffix++}`; }
+        usedIds.add(id);
+        heading.id = id;
+        const link = document.createElement('a');
+        link.className = `toc-link level-${heading.tagName.slice(1)}`;
+        link.href = `#${id}`;
+        link.textContent = heading.textContent;
+        link.addEventListener('click', () => sidebar.classList.remove('open'));
+        toc.appendChild(link);
+      });
+    }
+
+    let filterTree = [];
+    let filterState = new Map();
+    let filterDraft = new Map();
+
+    function buildFilterTree() {
+      filterTree = [];
+      filterState = new Map();
+      let currentH2 = null, currentH3 = null, currentH4 = null;
+      const makeNode = (el, level, parent) => {
+        const node = { id: el.id, level, label: el.textContent, parent, children: [], ownElements: [el] };
+        filterState.set(node.id, true);
+        return node;
+      };
+      [...content.children].forEach(el => {
+        if (el.tagName === 'H2') {
+          const node = makeNode(el, 2, null);
+          filterTree.push(node);
+          currentH2 = node; currentH3 = null; currentH4 = null;
+        } else if (el.tagName === 'H3' && currentH2) {
+          const node = makeNode(el, 3, currentH2);
+          currentH2.children.push(node);
+          currentH3 = node; currentH4 = null;
+        } else if (el.tagName === 'H4' && (currentH3 || currentH2)) {
+          const parent = currentH3 || currentH2;
+          const node = makeNode(el, 4, parent);
+          parent.children.push(node);
+          currentH4 = node;
+        } else {
+          const owner = currentH4 || currentH3 || currentH2;
+          if (owner) owner.ownElements.push(el);
+        }
+      });
+    }
+
+    function flattenFilterTree(nodes = filterTree) {
+      return nodes.flatMap(node => [node, ...flattenFilterTree(node.children)]);
+    }
+
+    function findFilterNode(id, nodes = filterTree) {
+      for (const node of nodes) {
+        if (node.id === id) return node;
+        const found = findFilterNode(id, node.children);
+        if (found) return found;
+      }
+      return null;
+    }
+
+    function applyFilterVisibility() {
+      flattenFilterTree().forEach(node => {
+        const active = filterState.get(node.id) !== false;
+        node.ownElements.forEach(el => el.classList.toggle('filter-hidden', !active));
+        const tocLink = toc.querySelector(`a[href="#${node.id}"]`);
+        if (tocLink) tocLink.classList.toggle('filter-hidden', !active);
+      });
+    }
+
+    function setFilterDraftCascade(node, value) {
+      filterDraft.set(node.id, value);
+      node.children.forEach(child => setFilterDraftCascade(child, value));
+      if (value) {
+        let ancestor = node.parent;
+        while (ancestor) { filterDraft.set(ancestor.id, true); ancestor = ancestor.parent; }
+      }
+    }
+
+    function renderFilterTreeUI() {
+      const container = document.getElementById('filter-tree');
+      container.innerHTML = '';
+      const buildList = nodes => {
+        const ul = document.createElement('ul');
+        ul.className = 'filter-tree';
+        nodes.forEach(node => {
+          const li = document.createElement('li');
+          li.className = `filter-node level-${node.level}`;
+          const label = document.createElement('label');
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.dataset.nodeId = node.id;
+          checkbox.checked = filterDraft.get(node.id) !== false;
+          const span = document.createElement('span');
+          span.textContent = node.label;
+          label.append(checkbox, span);
+          li.appendChild(label);
+          if (node.children.length) li.appendChild(buildList(node.children));
+          ul.appendChild(li);
+        });
+        return ul;
+      };
+      container.appendChild(buildList(filterTree));
+    }
+
+    function syncFilterCheckboxes() {
+      document.querySelectorAll('#filter-tree input[type="checkbox"]').forEach(input => {
+        input.checked = filterDraft.get(input.dataset.nodeId) !== false;
+      });
+      syncSelectAllCheckbox();
+    }
+
+    function syncSelectAllCheckbox() {
+      const selectAll = document.getElementById('filter-select-all');
+      const values = flattenFilterTree().map(node => filterDraft.get(node.id) !== false);
+      const allOn = values.every(Boolean);
+      const allOff = values.every(v => !v);
+      selectAll.checked = allOn;
+      selectAll.indeterminate = !allOn && !allOff;
+    }
+
+    const filterModal = document.getElementById('filter-modal');
+    function openFilterModal() {
+      filterDraft = new Map(filterState);
+      renderFilterTreeUI();
+      syncSelectAllCheckbox();
+      filterModal.hidden = false;
+    }
+    function closeFilterModal() { filterModal.hidden = true; }
+
+    document.getElementById('filter-tree').addEventListener('change', event => {
+      const input = event.target.closest('input[type="checkbox"]');
+      if (!input) return;
+      const node = findFilterNode(input.dataset.nodeId);
+      if (!node) return;
+      setFilterDraftCascade(node, input.checked);
+      syncFilterCheckboxes();
+    });
+    document.getElementById('filter-select-all').addEventListener('change', event => {
+      const checked = event.target.checked;
+      filterTree.forEach(node => setFilterDraftCascade(node, checked));
+      syncFilterCheckboxes();
+    });
+    document.getElementById('filter-save').addEventListener('click', () => {
+      filterState = new Map(filterDraft);
+      applyFilterVisibility();
+      closeFilterModal();
+    });
+    document.getElementById('filter-cancel').addEventListener('click', closeFilterModal);
+    document.getElementById('filter-modal-close').addEventListener('click', closeFilterModal);
+    filterModal.addEventListener('click', event => { if (event.target === filterModal) closeFilterModal(); });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape' && !filterModal.hidden) closeFilterModal(); });
+    document.getElementById('filter').addEventListener('click', openFilterModal);
+    document.getElementById('filter-mobile').addEventListener('click', openFilterModal);
+
+    function parseFrontMatter(markdown) {
+      const lines = markdown.split(/\r?\n/);
+      if (lines[0]?.trim() !== '---') return { rows: null, body: markdown };
+      let end = -1;
+      for (let i = 1; i < lines.length; i++) {
+        if (lines[i].trim() === '---') { end = i; break; }
+      }
+      if (end === -1) return { rows: null, body: markdown };
+      const rows = [];
+      lines.slice(1, end).forEach(line => {
+        const idx = line.indexOf(':');
+        if (idx === -1 || !line.slice(0, idx).trim()) return;
+        const key = line.slice(0, idx).trim();
+        let value = line.slice(idx + 1).trim();
+        if (value.startsWith('{') && value.endsWith('}')) {
+          try {
+            value = Object.entries(JSON.parse(value)).map(([k, v]) => `${k}: ${v}`).join('  ');
+          } catch { /* not valid JSON, keep raw */ }
+        }
+        rows.push([key, value]);
+      });
+      return { rows, body: lines.slice(end + 1).join('\n') };
+    }
+
+    function renderFrontMatterTable(rows) {
+      if (!rows || !rows.length) return '';
+      const body = rows.map(([key, value]) => `<tr><td>${escapeHtml(key)}</td><td>${escapeHtml(value)}</td></tr>`).join('');
+      return `<table class="front-matter-table"><tbody>${body}</tbody></table>`;
+    }
+
+    async function renderDocument(markdown) {
+      const { rows: frontMatterRows, body } = parseFrontMatter(markdown);
+      content.innerHTML = renderFrontMatterTable(frontMatterRows) + marked.parse(body, { renderer: markdownRenderer() });
+      content.querySelectorAll('table').forEach(table => {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'table-scroll';
+        table.parentNode.insertBefore(wrapper, table);
+        wrapper.appendChild(table);
+      });
+      content.querySelectorAll('table').forEach(paginateTable);
+      buildToc();
+      buildFilterTree();
+      if (window.mermaid) {
+        mermaid.initialize({ startOnLoad: false, theme: 'base', themeVariables: screenDiagramTheme });
+        await mermaid.run({ querySelector: '.mermaid' });
+      }
+      setupDiagramControls();
+      updateProgress();
+    }
+
+    function setupDiagramControls() {
+      document.querySelectorAll('.diagram-frame').forEach(frame => {
+        const diagram = frame.querySelector('.mermaid');
+        const state = { scale: 1, x: 0, y: 0, dragging: false, startX: 0, startY: 0 };
+        const renderTransform = () => { diagram.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`; };
+        const reset = () => { state.scale = 1; state.x = 0; state.y = 0; renderTransform(); };
+        frame._resetDiagramZoom = reset;
+        frame.querySelector('[data-diagram-action="zoom-in"]').addEventListener('click', () => { state.scale = Math.min(4, state.scale + .25); renderTransform(); });
+        frame.querySelector('[data-diagram-action="zoom-out"]').addEventListener('click', () => { state.scale = Math.max(.5, state.scale - .25); renderTransform(); });
+        frame.querySelector('[data-diagram-action="reset"]').addEventListener('click', reset);
+        diagram.addEventListener('pointerdown', event => {
+          state.dragging = true;
+          state.startX = event.clientX - state.x;
+          state.startY = event.clientY - state.y;
+          diagram.setPointerCapture(event.pointerId);
+          diagram.classList.add('is-dragging');
+        });
+        diagram.addEventListener('pointermove', event => {
+          if (!state.dragging) return;
+          state.x = event.clientX - state.startX;
+          state.y = event.clientY - state.startY;
+          renderTransform();
+        });
+        const stopDragging = event => {
+          state.dragging = false;
+          diagram.classList.remove('is-dragging');
+          if (event.pointerId) diagram.releasePointerCapture?.(event.pointerId);
+        };
+        diagram.addEventListener('pointerup', stopDragging);
+        diagram.addEventListener('pointercancel', stopDragging);
+        diagram.addEventListener('wheel', event => {
+          event.preventDefault();
+          state.scale = Math.max(.5, Math.min(4, state.scale + (event.deltaY < 0 ? .15 : -.15)));
+          renderTransform();
+        }, { passive: false });
+        renderTransform();
+      });
+    }
+
+    function resetAllDiagramZooms() {
+      document.querySelectorAll('.diagram-frame').forEach(frame => frame._resetDiagramZoom?.());
+    }
+
+    function initSourcePicker() {
+      const sourcePicker = document.getElementById('source-picker');
+      const filePicker = document.getElementById('file-picker');
+      const fileName = document.getElementById('file-picker-name');
+      const fileStatus = document.getElementById('file-picker-status');
+      filePicker.addEventListener('change', async event => {
+        const file = event.target.files[0];
+        if (!file) return;
+        fileName.textContent = file.name;
+        fileStatus.classList.add('visible');
+        await new Promise(requestAnimationFrame);
+        const text = await file.text();
+        await renderDocument(text);
+        document.getElementById('source-name').textContent = file.name;
+        fileStatus.classList.remove('visible');
+        sourcePicker.open = false;
+      });
+    }
+
+    async function loadSource() {
+      try {
+        const response = await fetch(sourcePath);
+        if (!response.ok) throw new Error('Unable to load source');
+        document.getElementById('source-name').textContent = sourcePath;
+        await renderDocument(await response.text());
+      } catch (error) {
+        content.innerHTML = `<div class="summary-card">
+          <strong>This is only a viewer</strong>
+          <span>This browser did not save file access. Use "Open a Markdown file" above to select it manually.</span>
+        </div>`;
+        document.getElementById('source-name').textContent = 'No file loaded';
+        document.getElementById('source-picker').open = true;
+      }
+    }
+
+    function updateProgress() {
+      const scrollable = document.documentElement.scrollHeight - window.innerHeight;
+      progress.style.width = `${scrollable > 0 ? (window.scrollY / scrollable) * 100 : 0}%`;
+      const headings = [...content.querySelectorAll('h2, h3')];
+      const current = headings.filter(heading => heading.getBoundingClientRect().top < 140).pop();
+      document.querySelectorAll('.toc-link').forEach(link => link.classList.toggle('active', current && link.getAttribute('href') === `#${current.id}`));
+    }
+
+    search.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase();
+      const blocks = [...content.children];
+      let visible = 0;
+      blocks.forEach(block => {
+        const match = !query || block.textContent.toLowerCase().includes(query);
+        block.classList.toggle('search-hidden', !match);
+        if (match && block.textContent.trim()) visible++;
+      });
+      document.querySelectorAll('.toc-link').forEach(link => link.classList.toggle('search-hidden', Boolean(query) && !content.querySelector(link.hash)?.textContent.toLowerCase().includes(query)));
+      emptySearch.classList.toggle('visible', Boolean(query) && visible === 0);
+    });
+
+    let collapsedDetailsBeforePrint = [];
+    function openAllContentDetails() {
+      collapsedDetailsBeforePrint = [...content.querySelectorAll('details:not([open])')];
+      collapsedDetailsBeforePrint.forEach(details => { details.open = true; });
+    }
+    function restoreContentDetails() {
+      collapsedDetailsBeforePrint.forEach(details => { details.open = false; });
+      collapsedDetailsBeforePrint = [];
+    }
+
+    async function handlePrintClick() {
+      document.body.classList.add('print-ready');
+      resetAllDiagramZooms();
+      openAllContentDetails();
+      if (window.mermaid) await applyDiagramTheme(printDiagramTheme);
+      window.requestAnimationFrame(() => window.print());
+    }
+    document.getElementById('print').addEventListener('click', handlePrintClick);
+    document.getElementById('print-mobile').addEventListener('click', handlePrintClick);
+    window.addEventListener('afterprint', async () => {
+      document.body.classList.remove('print-ready');
+      restoreContentDetails();
+      if (window.mermaid) await applyDiagramTheme(screenDiagramTheme);
+    });
+    document.querySelector('.mobile-menu').addEventListener('click', event => {
+      const open = sidebar.classList.toggle('open');
+      event.currentTarget.setAttribute('aria-expanded', String(open));
+    });
+    window.addEventListener('scroll', updateProgress, { passive: true });
+    initSourcePicker();
+    loadSource();
+  </script>
+</body>
+</html>
