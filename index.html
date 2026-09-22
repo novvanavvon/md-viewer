@@ -130,6 +130,7 @@
     .progress-track { height: 4px; margin: 0 0 23px; overflow: hidden; background: var(--paper-deep); border-radius: 99px; }
     .progress-bar { width: 0; height: 100%; background: var(--amber); transition: width .15s linear; }
     #toc { display: grid; gap: 4px; }
+    .toc-item { display: grid; gap: 4px; }
     .toc-link {
       display: block;
       padding: 7px 9px;
@@ -145,6 +146,28 @@
     .toc-link.level-4 { padding-left: 48px; font-size: 10.5px; opacity: .88; }
     .toc-link.level-5 { padding-left: 62px; font-size: 10px; opacity: .78; }
     .toc-link.level-6 { padding-left: 76px; font-size: 9.5px; opacity: .68; }
+    .toc-row { display: flex; align-items: stretch; }
+    .toc-toggle {
+      flex: 0 0 18px;
+      width: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      padding: 0;
+      color: var(--muted);
+      font-size: 9px;
+      cursor: pointer;
+      transition: transform .15s ease, color .15s ease;
+    }
+    .toc-toggle:hover { color: var(--blue-dark); }
+    .toc-toggle.collapsed { transform: rotate(-90deg); }
+    .toc-spacer { flex: 0 0 18px; }
+    .toc-row .toc-link { flex: 1; min-width: 0; }
+    .toc-children { display: grid; gap: 4px; margin-top: 4px; }
+    .toc-children.toc-collapsed { display: none; }
+    #toc.search-active .toc-children.toc-collapsed { display: grid; }
 
     main { min-width: 0; padding: 54px clamp(24px, 5vw, 80px) 100px; background: linear-gradient(180deg, rgba(8, 16, 24, .26), rgba(8, 16, 24, .68) 28%, rgba(8, 16, 24, .82)); }
     .document { max-width: 970px; margin: 0 auto; }
@@ -569,13 +592,22 @@
 
     function buildToc() {
       toc.innerHTML = '';
+      const topRow = document.createElement('div');
+      topRow.className = 'toc-row';
+      const topSpacer = document.createElement('span');
+      topSpacer.className = 'toc-spacer';
+      topRow.appendChild(topSpacer);
       const topLink = document.createElement('a');
       topLink.className = 'toc-link level-1';
       topLink.href = '#top';
       topLink.textContent = 'MD File Reader';
       topLink.addEventListener('click', () => sidebar.classList.remove('open'));
-      toc.appendChild(topLink);
+      topRow.appendChild(topLink);
+      toc.appendChild(topRow);
+
       const usedIds = new Set();
+      const roots = [];
+      const stack = [];
       content.querySelectorAll('h2, h3, h4, h5, h6').forEach((heading, index) => {
         const base = slugify(heading.textContent) || `section-${index}`;
         let id = base;
@@ -583,13 +615,57 @@
         while (usedIds.has(id)) { id = `${base}-${suffix++}`; }
         usedIds.add(id);
         heading.id = id;
-        const link = document.createElement('a');
-        link.className = `toc-link level-${heading.tagName.slice(1)}`;
-        link.href = `#${id}`;
-        link.textContent = heading.textContent;
-        link.addEventListener('click', () => sidebar.classList.remove('open'));
-        toc.appendChild(link);
+        const level = Number(heading.tagName.slice(1));
+        const node = { heading, level, children: [] };
+        while (stack.length && stack.at(-1).level >= level) stack.pop();
+        if (stack.length) stack.at(-1).children.push(node); else roots.push(node);
+        stack.push(node);
       });
+
+      function renderNode(node) {
+        const item = document.createElement('div');
+        item.className = 'toc-item';
+        const row = document.createElement('div');
+        row.className = 'toc-row';
+
+        let childrenWrap = null;
+        if (node.children.length) {
+          childrenWrap = document.createElement('div');
+          childrenWrap.className = 'toc-children';
+          const toggle = document.createElement('button');
+          toggle.type = 'button';
+          toggle.className = 'toc-toggle';
+          toggle.setAttribute('aria-label', `Toggle ${node.heading.textContent} subsections`);
+          toggle.setAttribute('aria-expanded', 'true');
+          toggle.textContent = '▾';
+          toggle.addEventListener('click', () => {
+            const collapsed = childrenWrap.classList.toggle('toc-collapsed');
+            toggle.classList.toggle('collapsed', collapsed);
+            toggle.setAttribute('aria-expanded', String(!collapsed));
+          });
+          row.appendChild(toggle);
+        } else {
+          const spacer = document.createElement('span');
+          spacer.className = 'toc-spacer';
+          row.appendChild(spacer);
+        }
+
+        const link = document.createElement('a');
+        link.className = `toc-link level-${node.level}`;
+        link.href = `#${node.heading.id}`;
+        link.textContent = node.heading.textContent;
+        link.addEventListener('click', () => sidebar.classList.remove('open'));
+        row.appendChild(link);
+        item.appendChild(row);
+
+        if (childrenWrap) {
+          node.children.forEach(child => childrenWrap.appendChild(renderNode(child)));
+          item.appendChild(childrenWrap);
+        }
+        return item;
+      }
+
+      roots.forEach(node => toc.appendChild(renderNode(node)));
     }
 
     let filterTree = [];
@@ -904,6 +980,7 @@
 
     search.addEventListener('input', () => {
       const query = search.value.trim().toLowerCase();
+      toc.classList.toggle('search-active', Boolean(query));
       const blocks = [...content.children];
       let visible = 0;
       blocks.forEach(block => {
