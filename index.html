@@ -141,14 +141,17 @@
     .toc-link:hover, .toc-link.active { color: var(--blue-dark); background: var(--cyan-soft); border-left-color: var(--amber); }
     .toc-link.level-1 { margin-top: 8px; color: var(--blue-dark); font-weight: 700; }
     .toc-link.level-2 { padding-left: 20px; }
-    .toc-link.level-3 { padding-left: 31px; font-size: 11px; }
+    .toc-link.level-3 { padding-left: 34px; font-size: 11px; }
+    .toc-link.level-4 { padding-left: 48px; font-size: 10.5px; opacity: .88; }
+    .toc-link.level-5 { padding-left: 62px; font-size: 10px; opacity: .78; }
+    .toc-link.level-6 { padding-left: 76px; font-size: 9.5px; opacity: .68; }
 
     main { min-width: 0; padding: 54px clamp(24px, 5vw, 80px) 100px; background: linear-gradient(180deg, rgba(8, 16, 24, .26), rgba(8, 16, 24, .68) 28%, rgba(8, 16, 24, .82)); }
     .document { max-width: 970px; margin: 0 auto; }
     .document-header { padding: 20px 0 48px; border-bottom: 1px solid var(--line); }
     .draft-note { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 20px; color: var(--amber); background: var(--amber-soft); border: 1px solid rgba(230, 177, 106, .3); border-radius: 6px; padding: 5px 10px; font: 700 11px Arial, sans-serif; letter-spacing: .04em; text-transform: uppercase; }
     .draft-note::before { content: ''; width: 7px; height: 7px; background: var(--amber); border-radius: 50%; }
-    h1, h2, h3, h4 { color: var(--blue-dark); font-weight: 700; line-height: 1.15; }
+    h1, h2, h3, h4, h5, h6 { color: var(--blue-dark); font-weight: 700; line-height: 1.15; }
     h1 { max-width: 760px; margin: 0 0 14px; font-size: clamp(38px, 5vw, 66px); letter-spacing: -.045em; }
     .lede { max-width: 700px; margin: 0; color: var(--muted); font-size: 18px; }
     .doc-meta { display: flex; flex-wrap: wrap; gap: 8px 24px; margin-top: 25px; color: var(--muted); font: 12px Arial, sans-serif; }
@@ -180,6 +183,8 @@
     #content h2 { margin: 62px 0 18px; padding-top: 18px; border-top: 1px solid var(--line); font-size: clamp(27px, 3vw, 38px); letter-spacing: -.03em; scroll-margin-top: 100px; }
     #content h3 { margin: 40px 0 13px; font-size: 24px; scroll-margin-top: 100px; }
     #content h4 { margin: 28px 0 9px; font: 700 17px Arial, sans-serif; scroll-margin-top: 100px; }
+    #content h5 { margin: 24px 0 8px; font: 700 15px Arial, sans-serif; scroll-margin-top: 100px; }
+    #content h6 { margin: 20px 0 7px; font: 700 13px Arial, sans-serif; scroll-margin-top: 100px; }
     #content p, #content ol, #content ul { max-width: 850px; }
     #content a { color: var(--blue); }
     #content strong { color: var(--blue-dark); }
@@ -250,6 +255,7 @@
     .diagram-controls svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
     .diagram-controls button:hover { color: #081018; background: var(--blue); }
     .search-hidden { display: none !important; }
+    mark.search-hit { background: var(--amber-soft); color: yellow; border-radius: 3px; padding: 0 2px; }
     .empty-search { display: none; padding: 28px 0; color: var(--muted); text-align: center; font-style: italic; }
     .empty-search.visible { display: block; }
     .mobile-menu { display: none; }
@@ -289,8 +295,9 @@
       #content pre, #content table, .mermaid { break-inside: avoid; }
       body::before, body::after { display: none !important; }
       body { background: #fff; color: #111; }
-      #content h1, #content h2, #content h3, #content h4, #content strong { color: #111; }
+      #content h1, #content h2, #content h3, #content h4, #content h5, #content h6, #content strong { color: #111; }
       #content table, .table-scroll { background: #fff; border-color: #aaa; }
+      mark.search-hit { background: none; color: inherit; padding: 0; border-radius: 0; }
       #content th { color: #fff; background: #244f5b; }
       #content td { color: #111; }
       #content tr:nth-child(even) td { background: #f2f2f2; }
@@ -370,7 +377,7 @@
         <article class="document">
           <header class="document-header">
             <div class="draft-note">Draft without direction · reader view</div>
-            <h1>MD File Reader</h1>
+            <h1 id="top">MD File Reader</h1>
             <p class="lede">A structured, searchable reading view for any Markdown document — headings, tables, and diagrams rendered inline.</p>
             <div class="doc-meta">
               <span><strong>Source:</strong> <code id="source-name">Loading…</code></span>
@@ -562,8 +569,14 @@
 
     function buildToc() {
       toc.innerHTML = '';
+      const topLink = document.createElement('a');
+      topLink.className = 'toc-link level-1';
+      topLink.href = '#top';
+      topLink.textContent = 'MD File Reader';
+      topLink.addEventListener('click', () => sidebar.classList.remove('open'));
+      toc.appendChild(topLink);
       const usedIds = new Set();
-      content.querySelectorAll('h2, h3, h4').forEach((heading, index) => {
+      content.querySelectorAll('h2, h3, h4, h5, h6').forEach((heading, index) => {
         const base = slugify(heading.textContent) || `section-${index}`;
         let id = base;
         let suffix = 2;
@@ -586,28 +599,24 @@
     function buildFilterTree() {
       filterTree = [];
       filterState = new Map();
-      let currentH2 = null, currentH3 = null, currentH4 = null;
+      const headingStack = [];
       const makeNode = (el, level, parent) => {
         const node = { id: el.id, level, label: el.textContent, parent, children: [], ownElements: [el] };
         filterState.set(node.id, true);
         return node;
       };
       [...content.children].forEach(el => {
-        if (el.tagName === 'H2') {
-          const node = makeNode(el, 2, null);
-          filterTree.push(node);
-          currentH2 = node; currentH3 = null; currentH4 = null;
-        } else if (el.tagName === 'H3' && currentH2) {
-          const node = makeNode(el, 3, currentH2);
-          currentH2.children.push(node);
-          currentH3 = node; currentH4 = null;
-        } else if (el.tagName === 'H4' && (currentH3 || currentH2)) {
-          const parent = currentH3 || currentH2;
-          const node = makeNode(el, 4, parent);
-          parent.children.push(node);
-          currentH4 = node;
+        const match = el.tagName.match(/^H([2-6])$/);
+        if (match) {
+          const level = Number(match[1]);
+          while (headingStack.length && headingStack.at(-1).level >= level) headingStack.pop();
+          const parent = headingStack.at(-1) || null;
+          const node = makeNode(el, level, parent);
+          if (parent) parent.children.push(node);
+          else filterTree.push(node);
+          headingStack.push(node);
         } else {
-          const owner = currentH4 || currentH3 || currentH2;
+          const owner = headingStack.at(-1);
           if (owner) owner.ownElements.push(el);
         }
       });
@@ -851,9 +860,46 @@
     function updateProgress() {
       const scrollable = document.documentElement.scrollHeight - window.innerHeight;
       progress.style.width = `${scrollable > 0 ? (window.scrollY / scrollable) * 100 : 0}%`;
-      const headings = [...content.querySelectorAll('h2, h3')];
-      const current = headings.filter(heading => heading.getBoundingClientRect().top < 140).pop();
+      const headings = [document.getElementById('top'), ...content.querySelectorAll('h2, h3, h4, h5, h6')];
+      const current = headings.filter(heading => heading.getBoundingClientRect().top < 140).pop() || headings[0];
       document.querySelectorAll('.toc-link').forEach(link => link.classList.toggle('active', current && link.getAttribute('href') === `#${current.id}`));
+    }
+
+    function clearHighlights(root) {
+      root.querySelectorAll('mark.search-hit').forEach(mark => {
+        mark.replaceWith(document.createTextNode(mark.textContent));
+      });
+      root.normalize();
+    }
+
+    function highlightMatches(root, query) {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode: node => (node.parentElement && node.parentElement.closest('script, style, mark.search-hit'))
+          ? NodeFilter.FILTER_REJECT
+          : NodeFilter.FILTER_ACCEPT
+      });
+      const textNodes = [];
+      let node;
+      while ((node = walker.nextNode())) textNodes.push(node);
+      textNodes.forEach(textNode => {
+        const lower = textNode.textContent.toLowerCase();
+        if (!lower.includes(query)) return;
+        const frag = document.createDocumentFragment();
+        let text = textNode.textContent;
+        let lowerText = lower;
+        let index;
+        while ((index = lowerText.indexOf(query)) !== -1) {
+          if (index > 0) frag.appendChild(document.createTextNode(text.slice(0, index)));
+          const mark = document.createElement('mark');
+          mark.className = 'search-hit';
+          mark.textContent = text.slice(index, index + query.length);
+          frag.appendChild(mark);
+          text = text.slice(index + query.length);
+          lowerText = lowerText.slice(index + query.length);
+        }
+        frag.appendChild(document.createTextNode(text));
+        textNode.replaceWith(frag);
+      });
     }
 
     search.addEventListener('input', () => {
@@ -861,9 +907,11 @@
       const blocks = [...content.children];
       let visible = 0;
       blocks.forEach(block => {
+        clearHighlights(block);
         const match = !query || block.textContent.toLowerCase().includes(query);
         block.classList.toggle('search-hidden', !match);
         if (match && block.textContent.trim()) visible++;
+        if (match && query) highlightMatches(block, query);
       });
       document.querySelectorAll('.toc-link').forEach(link => link.classList.toggle('search-hidden', Boolean(query) && !content.querySelector(link.hash)?.textContent.toLowerCase().includes(query)));
       emptySearch.classList.toggle('visible', Boolean(query) && visible === 0);
