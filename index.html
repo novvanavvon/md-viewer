@@ -148,26 +148,27 @@
     .toc-link.level-6 { padding-left: 76px; font-size: 9.5px; opacity: .68; }
     .toc-row { display: flex; align-items: stretch; }
     .toc-toggle {
-      flex: 0 0 18px;
-      width: 18px;
+      flex: 0 0 26px;
+      width: 26px;
+      min-height: 26px;
       display: flex;
       align-items: center;
       justify-content: center;
       background: transparent;
       border: none;
+      border-radius: 6px;
       padding: 0;
       color: var(--muted);
-      font-size: 9px;
+      font-size: 11px;
       cursor: pointer;
-      transition: transform .15s ease, color .15s ease;
+      transition: transform .15s ease, color .15s ease, background .15s ease;
     }
-    .toc-toggle:hover { color: var(--blue-dark); }
+    .toc-toggle:hover { color: var(--blue-dark); background: var(--cyan-soft); }
     .toc-toggle.collapsed { transform: rotate(-90deg); }
-    .toc-spacer { flex: 0 0 18px; }
+    .toc-spacer { flex: 0 0 26px; }
     .toc-row .toc-link { flex: 1; min-width: 0; }
     .toc-children { display: grid; gap: 4px; margin-top: 4px; }
     .toc-children.toc-collapsed { display: none; }
-    #toc.search-active .toc-children.toc-collapsed { display: grid; }
 
     main { min-width: 0; padding: 54px clamp(24px, 5vw, 80px) 100px; background: linear-gradient(180deg, rgba(8, 16, 24, .26), rgba(8, 16, 24, .68) 28%, rgba(8, 16, 24, .82)); }
     .document { max-width: 970px; margin: 0 auto; }
@@ -191,6 +192,13 @@
     .file-picker-name { color: var(--muted); font: 12px Arial, sans-serif; }
     .file-picker-status { display: none; align-items: center; gap: 9px; color: var(--muted); font: 12px Arial, sans-serif; }
     .file-picker-status.visible { display: flex; }
+    .render-error-banner { display: none; margin: 0 0 20px; padding: 14px 16px; background: #3a1414; border: 1px solid #8a3030; border-radius: 9px; color: #ffd9d9; font: 12px/1.5 Arial, sans-serif; }
+    .render-error-banner.visible { display: block; }
+    .render-error-banner strong { display: block; margin-bottom: 6px; color: #ff9a9a; font-size: 13px; }
+    .render-error-banner ul { margin: 0; padding-left: 18px; }
+    .render-error-banner li { margin-bottom: 4px; }
+    .render-error-banner code { color: #ffb4b4; }
+    .diagram-error { padding: 16px; background: #1a1010; border: 1px dashed #8a3030; border-radius: 9px; color: #ffb4b4; font: 12px/1.5 monospace; overflow-x: auto; white-space: pre-wrap; }
     .file-picker-spinner { width: 14px; height: 14px; border: 2px solid rgba(127, 215, 223, .25); border-top-color: var(--blue); border-radius: 50%; animation: file-picker-spin .6s linear infinite; }
     @keyframes file-picker-spin { to { transform: rotate(360deg); } }
     .source-picker { margin-top: 22px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-raised); overflow: hidden; }
@@ -423,6 +431,7 @@
             <div class="summary-card"><strong>87</strong><span>features covered by the proposed flows</span></div>
             <div class="summary-card"><strong>4</strong><span>handoff audiences: FE, API, QA and UAT</span></div> -->
           </div>
+          <div class="render-error-banner" id="render-error-banner" role="alert"></div>
           <div id="content"><p>Loading document...</p></div>
           <p class="empty-search" id="empty-search">No matching sections. Try a broader search term.</p>
         </article>
@@ -456,6 +465,7 @@
   <script>
     const sourcePath = 'your_md_file.md';
     const content = document.getElementById('content');
+    const renderErrorBanner = document.getElementById('render-error-banner');
     const toc = document.getElementById('toc');
     const search = document.getElementById('search');
     const sidebar = document.getElementById('sidebar');
@@ -835,24 +845,74 @@
       return `<table class="front-matter-table"><tbody>${body}</tbody></table>`;
     }
 
-    async function renderDocument(markdown) {
-      const { rows: frontMatterRows, body } = parseFrontMatter(markdown);
-      content.innerHTML = renderFrontMatterTable(frontMatterRows) + marked.parse(body, { renderer: markdownRenderer() });
-      content.querySelectorAll('table').forEach(table => {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'table-scroll';
-        table.parentNode.insertBefore(wrapper, table);
-        wrapper.appendChild(table);
-      });
-      content.querySelectorAll('table').forEach(paginateTable);
-      buildToc();
-      buildFilterTree();
-      if (window.mermaid) {
-        mermaid.initialize({ startOnLoad: false, theme: 'base', themeVariables: screenDiagramTheme });
-        await mermaid.run({ querySelector: '.mermaid' });
+    function nearestHeadingLabel(el) {
+      let node = el;
+      while (node) {
+        for (let sib = node.previousElementSibling; sib; sib = sib.previousElementSibling) {
+          if (/^H[1-6]$/.test(sib.tagName)) return sib.textContent.trim();
+        }
+        node = node.parentElement;
+        if (node === content) break;
       }
-      setupDiagramControls();
-      updateProgress();
+      return null;
+    }
+
+    function showRenderErrors(errors) {
+      if (!errors.length) {
+        renderErrorBanner.classList.remove('visible');
+        renderErrorBanner.innerHTML = '';
+        return;
+      }
+      const items = errors.map(err => `<li>${escapeHtml(err)}</li>`).join('');
+      renderErrorBanner.innerHTML = `<strong>${errors.length} issue${errors.length > 1 ? 's' : ''} found while rendering this document</strong><ul>${items}</ul>`;
+      renderErrorBanner.classList.add('visible');
+    }
+
+    async function renderDocument(markdown) {
+      const renderErrors = [];
+      try {
+        const { rows: frontMatterRows, body } = parseFrontMatter(markdown);
+        content.innerHTML = renderFrontMatterTable(frontMatterRows) + marked.parse(body, { renderer: markdownRenderer() });
+        content.querySelectorAll('table').forEach(table => {
+          const wrapper = document.createElement('div');
+          wrapper.className = 'table-scroll';
+          table.parentNode.insertBefore(wrapper, table);
+          wrapper.appendChild(table);
+        });
+        content.querySelectorAll('table').forEach(paginateTable);
+        buildToc();
+        buildFilterTree();
+        if (window.mermaid) {
+          mermaid.initialize({ startOnLoad: false, theme: 'base', themeVariables: screenDiagramTheme });
+          const diagrams = [...content.querySelectorAll('.mermaid')];
+          const validDiagrams = [];
+          let diagramIndex = 0;
+          for (const diagram of diagrams) {
+            diagramIndex++;
+            const src = decodeURIComponent(diagram.getAttribute('data-mermaid-src') ?? diagram.textContent);
+            try {
+              await mermaid.parse(src);
+              validDiagrams.push(diagram);
+            } catch (err) {
+              const frame = diagram.closest('.diagram-frame') ?? diagram;
+              const message = err?.message?.split('\n')[0] ?? String(err);
+              const label = nearestHeadingLabel(frame) ?? `diagram #${diagramIndex}`;
+              renderErrors.push(`"${label}" failed to render (${message}). The raw source is shown in its place — fix the syntax in the source .md file.`);
+              const pre = document.createElement('pre');
+              pre.className = 'diagram-error';
+              pre.textContent = src;
+              frame.replaceWith(pre);
+            }
+          }
+          if (validDiagrams.length) await mermaid.run({ nodes: validDiagrams });
+        }
+        setupDiagramControls();
+        updateProgress();
+      } catch (err) {
+        renderErrors.push(`Document failed to render fully (${err?.message ?? err}). Some sections may be missing.`);
+      } finally {
+        showRenderErrors(renderErrors);
+      }
     }
 
     function setupDiagramControls() {
@@ -978,9 +1038,18 @@
       });
     }
 
+    let searchWasActive = false;
     search.addEventListener('input', () => {
       const query = search.value.trim().toLowerCase();
       toc.classList.toggle('search-active', Boolean(query));
+      if (query && !searchWasActive) {
+        toc.querySelectorAll('.toc-children.toc-collapsed').forEach(children => {
+          children.classList.remove('toc-collapsed');
+          children.previousElementSibling?.querySelector('.toc-toggle')?.classList.remove('collapsed');
+          children.previousElementSibling?.querySelector('.toc-toggle')?.setAttribute('aria-expanded', 'true');
+        });
+      }
+      searchWasActive = Boolean(query);
       const blocks = [...content.children];
       let visible = 0;
       blocks.forEach(block => {
