@@ -210,7 +210,6 @@
     .source-picker-body { padding: 2px 16px 18px; display: flex; flex-direction: column; gap: 12px; }
     .source-picker-hint { margin: 0; color: var(--muted); font: 12px/1.4 Arial, sans-serif; }
 
-    #content > h1:first-of-type { display: none; }
     #content h2 { margin: 62px 0 18px; padding-top: 18px; border-top: 1px solid var(--line); font-size: clamp(27px, 3vw, 38px); letter-spacing: -.03em; scroll-margin-top: 100px; }
     #content h3 { margin: 40px 0 13px; font-size: 24px; scroll-margin-top: 100px; }
     #content h4 { margin: 28px 0 9px; font: 700 17px Arial, sans-serif; scroll-margin-top: 100px; }
@@ -623,7 +622,7 @@
       const usedIds = new Set();
       const roots = [];
       const stack = [];
-      content.querySelectorAll('h2, h3, h4, h5, h6').forEach((heading, index) => {
+      content.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((heading, index) => {
         const base = slugify(heading.textContent) || `section-${index}`;
         let id = base;
         let suffix = 2;
@@ -1001,7 +1000,7 @@
     function updateProgress() {
       const scrollable = document.documentElement.scrollHeight - window.innerHeight;
       progress.style.width = `${scrollable > 0 ? (window.scrollY / scrollable) * 100 : 0}%`;
-      const headings = [document.getElementById('top'), ...content.querySelectorAll('h2, h3, h4, h5, h6')];
+      const headings = [document.getElementById('top'), ...content.querySelectorAll('h1, h2, h3, h4, h5, h6')];
       const current = headings.filter(heading => heading.getBoundingClientRect().top < 140).pop() || headings[0];
       document.querySelectorAll('.toc-link').forEach(link => link.classList.toggle('active', current && link.getAttribute('href') === `#${current.id}`));
     }
