@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="A readable, searchable reference view for Markdown documents.">
-  <title>MD File Reader</title>
+  <title>MD Viewer</title>
   <style>
     :root {
       --paper: #081018;
@@ -148,9 +148,9 @@
     .toc-link.level-6 { padding-left: 76px; font-size: 9.5px; opacity: .68; }
     .toc-row { display: flex; align-items: stretch; }
     .toc-toggle {
-      flex: 0 0 26px;
-      width: 26px;
-      min-height: 26px;
+      flex: 0 0 32px;
+      width: 32px;
+      min-height: 32px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -159,13 +159,13 @@
       border-radius: 6px;
       padding: 0;
       color: var(--muted);
-      font-size: 11px;
+      font-size: 16px;
       cursor: pointer;
       transition: transform .15s ease, color .15s ease, background .15s ease;
     }
     .toc-toggle:hover { color: var(--blue-dark); background: var(--cyan-soft); }
     .toc-toggle.collapsed { transform: rotate(-90deg); }
-    .toc-spacer { flex: 0 0 26px; }
+    .toc-spacer { flex: 0 0 32px; }
     .toc-row .toc-link { flex: 1; min-width: 0; }
     .toc-children { display: grid; gap: 4px; margin-top: 4px; }
     .toc-children.toc-collapsed { display: none; }
@@ -322,12 +322,15 @@
       main { padding: 0; background: #fff; }
       .document { max-width: none; }
       .document-header { padding-top: 0; }
-      #content h2 { break-before: page; }
-      #content pre, #content table, .mermaid { break-inside: avoid; }
+      #content h2, #content h3, #content h4, #content h5, #content h6 { break-inside: avoid; }
+      #content pre, #content table { break-inside: avoid; }
       body::before, body::after { display: none !important; }
       body { background: #fff; color: #111; }
       #content h1, #content h2, #content h3, #content h4, #content h5, #content h6, #content strong { color: #111; }
       #content table, .table-scroll { background: #fff; border-color: #aaa; }
+      .table-scroll { overflow-x: visible !important; }
+      #content table { min-width: 0 !important; table-layout: auto !important; font-size: 11px !important; }
+      #content th, #content td { min-width: 0 !important; padding: 6px 8px !important; word-break: break-word; }
       mark.search-hit { background: none; color: inherit; padding: 0; border-radius: 0; }
       #content th { color: #fff; background: #244f5b; }
       #content td { color: #111; }
@@ -337,6 +340,8 @@
       #content pre { overflow: visible !important; white-space: pre-wrap !important; word-break: break-word; font-size: 9px; box-shadow: none; background: #142d38; color: #f4fbfc; border: 1.5px solid #7fd7df; }
       .diagram-frame, .mermaid { background: #fff; border-color: #aaa; }
       .diagram-controls { display: none; }
+      .diagram-frame { border: none !important; border-radius: 0 !important; overflow: visible !important; }
+      .mermaid { padding: 0 !important; }
       .table-toolbar, .table-pager { display: none !important; }
       .table-row-hidden { display: table-row !important; }
       #content table.table-paginated tr:nth-child(even) td { background: #f2f2f2; }
@@ -379,7 +384,7 @@
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">M/</div>
         <div>
-          <p class="brand-title">MD File Reader</p>
+          <p class="brand-title">MD Viewer</p>
           <p class="brand-subtitle">Markdown document viewer</p>
         </div>
       </div>
@@ -408,7 +413,7 @@
         <article class="document">
           <header class="document-header">
             <div class="draft-note">Draft without direction · reader view</div>
-            <h1 id="top">MD File Reader</h1>
+            <h1 id="top">MD Viewer</h1>
             <p class="lede">A structured, searchable reading view for any Markdown document — headings, tables, and diagrams rendered inline.</p>
             <div class="doc-meta">
               <span><strong>Source:</strong> <code id="source-name">Loading…</code></span>
@@ -610,7 +615,7 @@
       const topLink = document.createElement('a');
       topLink.className = 'toc-link level-1';
       topLink.href = '#top';
-      topLink.textContent = 'MD File Reader';
+      topLink.textContent = 'MD Viewer';
       topLink.addEventListener('click', () => sidebar.classList.remove('open'));
       topRow.appendChild(topLink);
       toc.appendChild(topRow);
@@ -725,8 +730,8 @@
       flattenFilterTree().forEach(node => {
         const active = filterState.get(node.id) !== false;
         node.ownElements.forEach(el => el.classList.toggle('filter-hidden', !active));
-        const tocLink = toc.querySelector(`a[href="#${node.id}"]`);
-        if (tocLink) tocLink.classList.toggle('filter-hidden', !active);
+        const tocItem = toc.querySelector(`a[href="#${node.id}"]`)?.closest('.toc-item');
+        if (tocItem) tocItem.classList.toggle('filter-hidden', !active);
       });
     }
 
@@ -1051,15 +1056,62 @@
       }
       searchWasActive = Boolean(query);
       const blocks = [...content.children];
+      const headingLevel = block => Number(block.tagName?.match(/^H([1-6])$/)?.[1]) || null;
+      const matches = blocks.map(block => Boolean(query) && block.textContent.toLowerCase().includes(query));
+      const show = blocks.map(() => !query);
+      const shownHeadingIds = new Set();
+
+      if (query) {
+        // precompute each block's ancestor heading indices via a level stack
+        const ancestorsOf = blocks.map(() => []);
+        const headingStack = [];
+        blocks.forEach((block, i) => {
+          const level = headingLevel(block);
+          if (level) {
+            while (headingStack.length && headingStack.at(-1).level >= level) headingStack.pop();
+            ancestorsOf[i] = headingStack.map(h => h.index);
+            headingStack.push({ level, index: i });
+          } else {
+            ancestorsOf[i] = headingStack.map(h => h.index);
+          }
+        });
+
+        matches.forEach((isMatch, i) => { if (isMatch) show[i] = true; });
+        // a matching heading reveals its whole section, down to (not including) the next heading of equal or higher level
+        blocks.forEach((block, i) => {
+          const level = headingLevel(block);
+          if (!level || !matches[i]) return;
+          for (let j = i + 1; j < blocks.length; j++) {
+            const jLevel = headingLevel(blocks[j]);
+            if (jLevel && jLevel <= level) break;
+            show[j] = true;
+          }
+        });
+        // a matching paragraph/diagram/etc reveals its closest preceding heading for context
+        blocks.forEach((block, i) => {
+          if (!matches[i] || headingLevel(block)) return;
+          for (let j = i - 1; j >= 0; j--) {
+            if (headingLevel(blocks[j])) { show[j] = true; break; }
+          }
+        });
+        // any shown heading also reveals its ancestor headings, so the section's parents stay visible
+        blocks.forEach((block, i) => {
+          if (headingLevel(block) && show[i]) ancestorsOf[i].forEach(ai => { show[ai] = true; });
+        });
+        blocks.forEach((block, i) => { if (show[i] && headingLevel(block) && block.id) shownHeadingIds.add(block.id); });
+      }
+
       let visible = 0;
-      blocks.forEach(block => {
+      blocks.forEach((block, i) => {
         clearHighlights(block);
-        const match = !query || block.textContent.toLowerCase().includes(query);
-        block.classList.toggle('search-hidden', !match);
-        if (match && block.textContent.trim()) visible++;
-        if (match && query) highlightMatches(block, query);
+        block.classList.toggle('search-hidden', !show[i]);
+        if (show[i] && block.textContent.trim()) visible++;
+        if (matches[i]) highlightMatches(block, query);
       });
-      document.querySelectorAll('.toc-link').forEach(link => link.classList.toggle('search-hidden', Boolean(query) && !content.querySelector(link.hash)?.textContent.toLowerCase().includes(query)));
+      document.querySelectorAll('.toc-link').forEach(link => {
+        const hide = Boolean(query) && !shownHeadingIds.has(link.hash.slice(1));
+        (link.closest('.toc-row') ?? link).classList.toggle('search-hidden', hide);
+      });
       emptySearch.classList.toggle('visible', Boolean(query) && visible === 0);
     });
 
