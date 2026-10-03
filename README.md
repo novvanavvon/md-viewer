@@ -161,6 +161,55 @@ The print stylesheet:
 
 After printing, the viewer restores the normal UI state, including re-collapsing `<details>` elements that were previously closed and restoring the screen Mermaid theme.
 
+### Templates
+
+The **Templates** menu next to the search box lists the files in the `template/` folder and downloads them one by one, or all together as `templates.zip`.
+
+The list is defined in the JavaScript section of `index.html`, because a page without a backend cannot read a folder listing:
+
+```js
+const templatesPath = 'template/';
+const templateFiles = [
+  { file: 'template-internal-it.md', label: 'Internal IT document' },
+  { file: 'template-frs.md', label: 'FRS content' },
+  { file: 'konversi-internal-ke-frs.md', label: 'Internal IT to FRS conversion prompt' }
+];
+```
+
+Add an entry to `templateFiles` when a file is added to the folder. The FRS Word template is deliberately not in this list or in the folder; it is supplied by the person exporting.
+
+### Word Export
+
+The **Print** menu has three entries: **Print / save as PDF** (the print flow above), **Export Word (.docx)** and **Make FRS Document (.docx)**.
+
+Export Word turns the document that is currently open into a plain Word file. It works for any Markdown document and uses no template:
+
+- Headings become real Word headings (Heading 1 to 6), so the navigation pane and a table of contents work.
+- Front matter becomes a two-column table at the top.
+- Tables get a shaded header row that repeats on each page.
+- Code blocks are set in a monospace font on a light background.
+- Mermaid diagrams are rendered with the print theme and embedded as PNG images, scaled to fit the page.
+- The page is A4 portrait. A document that contains a table with seven or more columns is laid out landscape instead.
+
+### Make FRS Document
+
+Make FRS Document takes the document that is currently open and places it into the FRS Word template. The template is not shipped with the viewer: the dialog asks for the `.docx` file and keeps it for the rest of the session.
+
+- Sections `1.1 OBJECTIVES` to `2.4 INTERFACE REQUIREMENT` are replaced with the Markdown content.
+- Everything else in the Word template (cover, document information, revision history, reviewer tables, headers, footers, sections 2.5 to 4) is left as it is.
+- Each `2.1.N` block becomes one copy of the template's page table (Detail Information, Page Detail, Screen Layout, Fields Detail), starting on a new page.
+- Markdown tables reuse the look of the template's Scope table.
+- Mermaid diagrams are rendered with the print theme and embedded as PNG images.
+- Images referenced with `![caption](path)` are embedded when the browser can fetch them.
+
+The open document must follow `template/template-frs.md`. Before exporting, the dialog lists what blocks the export (a missing numbered heading or `2.1.N` sub-heading) and what to check (placeholders such as `{{...}}` that are still unfilled).
+
+Notes:
+
+- The table of contents is left exactly as it is in the template, so its page numbers are the template's and must be corrected in Word. Do not use Word's **Update entire table** on it: most headings in the current template are not real Word headings, so a full update drops them from the table.
+- When the page is opened from a `file://` URL, linked images cannot be fetched and are replaced by a marker to insert them manually. This applies to Export Word as well.
+- The export looks up the template's headings and its Scope and `2.1.1` tables by their text, so those must stay in the Word template.
+
 ### Responsive Design and Accessibility
 
 At viewport widths of `840px` or less:
@@ -228,6 +277,7 @@ Dependencies:
 
 - `marked.js` for Markdown parsing.
 - `mermaid.js` for diagram rendering.
+- `JSZip` for reading and writing `.docx` and `.zip` files. It is loaded from jsDelivr the first time **Export Word**, **Make FRS Document** or **Download all** is used.
 
 An internet connection is required for these CDN scripts unless they are replaced with locally hosted copies.
 
@@ -239,8 +289,12 @@ An internet connection is required for these CDN scripts unless they are replace
 ├── README.md
 ├── your_md_file.md
 ├── 1156125.jpg.jpeg
-└── background/
-    └── background 1.jpeg
+├── background/
+│   └── background 1.jpeg
+└── template/
+    ├── template-internal-it.md
+    ├── template-frs.md
+    └── konversi-internal-ke-frs.md
 ```
 
 The application layout, styling, markup, and JavaScript logic are currently contained in `index.html`.

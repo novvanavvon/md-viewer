@@ -110,6 +110,14 @@
       font: 700 12px Arial, sans-serif;
     }
     .tool-button:hover { background: var(--cyan-soft); }
+    .menu-wrap { position: relative; }
+    .menu-toggle::after { content: '▾'; margin-left: 7px; color: var(--muted); font-size: 11px; }
+    .menu-list { position: absolute; z-index: 20; top: calc(100% + 8px); right: 0; min-width: 250px; display: grid; gap: 2px; padding: 6px; background: var(--surface-raised); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); }
+    .menu-list[hidden] { display: none; }
+    .menu-item { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; width: 100%; padding: 9px 11px; color: var(--ink); background: transparent; border: 0; border-radius: 7px; font: 13px Arial, sans-serif; text-align: left; text-decoration: none; }
+    .menu-item:hover { color: var(--blue-dark); background: var(--cyan-soft); }
+    .menu-item small { color: var(--muted); font: 11px Consolas, monospace; white-space: nowrap; }
+    .menu-divider { height: 1px; margin: 4px 6px; background: var(--line); }
 
     .layout { display: grid; grid-template-columns: var(--sidebar) minmax(0, 1fr); align-items: start; }
     .sidebar {
@@ -185,6 +193,7 @@
     .summary-card strong { display: block; margin-bottom: 4px; color: var(--blue); font: 700 23px Arial, sans-serif; }
     .summary-card span { color: var(--muted); font: 12px/1.35 Arial, sans-serif; }
     .file-picker-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .file-picker-row[hidden] { display: none; }
     .file-picker-input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
     .file-picker-label { display: inline-flex; align-items: center; height: 42px; padding: 0 14px; color: var(--blue-dark); background: rgba(127, 215, 223, .04); border: 1px solid var(--line); border-radius: 9px; font: 700 12px Arial, sans-serif; cursor: pointer; }
     .file-picker-label:hover { background: var(--cyan-soft); }
@@ -217,6 +226,7 @@
     #content h6 { margin: 20px 0 7px; font: 700 13px Arial, sans-serif; scroll-margin-top: 100px; }
     #content p, #content ol, #content ul { max-width: 850px; }
     #content a { color: var(--blue); }
+    #content img { max-width: 100%; height: auto; }
     #content strong { color: var(--blue-dark); }
     #content blockquote { margin: 22px 0; padding: 14px 20px; background: var(--amber-soft); border-left: 4px solid var(--amber); }
     #content code { padding: 2px 5px; color: var(--blue-dark); background: var(--paper-deep); border-radius: 4px; font: 12px Consolas, monospace; }
@@ -306,8 +316,10 @@
       .sidebar-actions { display: flex; gap: 10px; margin: 0 0 22px; }
       .sidebar-actions .tool-button { flex: 1; width: auto; height: 42px; padding: 0 14px; font-size: 12px; }
       .sidebar-actions .tool-button::after { content: none; }
+      .sidebar-actions + .sidebar-actions { margin-top: -12px; }
+      .sidebar .menu-list { position: static; margin: -12px 0 22px; box-shadow: none; }
       .mobile-menu { display: block; }
-      .tool-button#print, .tool-button#filter { display: none; }
+      .tool-button#filter, .toolbar .menu-wrap { display: none; }
       main { padding: 32px 18px 70px; }
       .doc-summary { grid-template-columns: 1fr; }
       .document-header { padding-top: 10px; }
@@ -375,6 +387,11 @@
     .modal-btn:hover { background: var(--cyan-soft); }
     .modal-btn.primary { color: var(--paper); background: var(--blue); border-color: var(--blue); }
     .modal-btn.primary:hover { background: var(--blue-dark); }
+    .modal-btn:disabled { opacity: .45; cursor: default; }
+    .export-heading { margin: 0 0 6px; color: var(--blue-dark); font: 700 12px Arial, sans-serif; }
+    .export-list { margin: 0 0 14px; padding-left: 18px; color: var(--ink); font: 12px/1.5 Arial, sans-serif; }
+    .export-list.is-error { color: #ffb4b4; }
+    .export-list.is-warning { color: var(--amber); }
   </style>
 </head>
 <body>
@@ -392,9 +409,20 @@
           <span class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)">Search document</span>
           <input id="search" type="search" placeholder="Search this document" autocomplete="off">
         </label>
+        <div class="menu-wrap">
+          <button class="tool-button menu-toggle" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="templates-menu">Templates</button>
+          <div class="menu-list" id="templates-menu" data-template-menu hidden></div>
+        </div>
         <button class="tool-button mobile-menu" type="button" aria-label="Open contents" aria-expanded="false">Contents</button>
         <button class="tool-button" id="filter" type="button" aria-label="Filter document contents">Filter</button>
-        <button class="tool-button" id="print" type="button" aria-label="Print document">Print</button>
+        <div class="menu-wrap">
+          <button class="tool-button menu-toggle" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="print-menu">Print</button>
+          <div class="menu-list" id="print-menu" hidden>
+            <button class="menu-item" id="print" type="button">Print / save as PDF</button>
+            <button class="menu-item" id="export-word" type="button">Export Word<small>.docx</small></button>
+            <button class="menu-item" id="export-frs" type="button">Make FRS Document<small>.docx</small></button>
+          </div>
+        </div>
       </div>
     </header>
 
@@ -404,6 +432,14 @@
           <button class="tool-button" id="filter-mobile" type="button" aria-label="Filter document contents">Filter</button>
           <button class="tool-button" id="print-mobile" type="button" aria-label="Print document">Print</button>
         </div>
+        <div class="sidebar-actions">
+          <button class="tool-button" id="export-frs-mobile" type="button">Make FRS Document</button>
+        </div>
+        <div class="sidebar-actions">
+          <button class="tool-button" id="export-word-mobile" type="button">Export Word</button>
+          <button class="tool-button menu-toggle" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="templates-menu-mobile">Templates</button>
+        </div>
+        <div class="menu-list" id="templates-menu-mobile" data-template-menu hidden></div>
         <p class="sidebar-label">Contents</p>
         <div class="progress-track" aria-label="Reading progress"><div class="progress-bar" id="progress"></div></div>
         <nav id="toc"></nav>
@@ -464,10 +500,39 @@
     </div>
   </div>
 
+  <div class="modal-overlay" id="export-modal" hidden>
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="export-modal-title">
+      <div class="modal-header">
+        <h2 id="export-modal-title">Make FRS Document (.docx)</h2>
+        <button class="modal-close" id="export-modal-close" type="button" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-hint" id="export-status" role="status"></p>
+        <div id="export-issues"></div>
+        <div class="file-picker-row" id="export-template-row" hidden>
+          <input id="export-template-picker" class="file-picker-input" type="file" accept=".docx">
+          <label class="file-picker-label" for="export-template-picker">Choose template</label>
+          <span class="file-picker-name" id="export-template-name">No file selected</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn" id="export-cancel" type="button">Close</button>
+        <button class="modal-btn primary" id="export-run" type="button" disabled>Make document</button>
+      </div>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
   <script>
     const sourcePath = 'your_md_file.md';
+    const templatesPath = 'template/';
+    const templateFiles = [
+      { file: 'template-internal-it.md', label: 'Internal IT document' },
+      { file: 'template-frs.md', label: 'FRS content' },
+      { file: 'konversi-internal-ke-frs.md', label: 'Internal IT to FRS conversion prompt' }
+    ];
+    let currentMarkdown = '';
     const content = document.getElementById('content');
     const renderErrorBanner = document.getElementById('render-error-banner');
     const toc = document.getElementById('toc');
@@ -873,6 +938,7 @@
     }
 
     async function renderDocument(markdown) {
+      currentMarkdown = markdown;
       const renderErrors = [];
       try {
         const { rows: frontMatterRows, body } = parseFrontMatter(markdown);
@@ -1113,6 +1179,742 @@
       });
       emptySearch.classList.toggle('visible', Boolean(query) && visible === 0);
     });
+
+    function closeMenus() {
+      document.querySelectorAll('.menu-list').forEach(menu => { menu.hidden = true; });
+      document.querySelectorAll('.menu-toggle').forEach(toggle => toggle.setAttribute('aria-expanded', 'false'));
+    }
+    document.querySelectorAll('.menu-toggle').forEach(toggle => {
+      toggle.addEventListener('click', event => {
+        event.stopPropagation();
+        const menu = document.getElementById(toggle.getAttribute('aria-controls'));
+        const open = menu.hidden;
+        closeMenus();
+        menu.hidden = !open;
+        toggle.setAttribute('aria-expanded', String(open));
+      });
+    });
+    document.addEventListener('click', closeMenus);
+
+    function downloadBlob(blob, name) {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    let jsZipLoading = null;
+    function loadJsZip() {
+      if (window.JSZip) return Promise.resolve(window.JSZip);
+      jsZipLoading ??= new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/jszip@3/dist/jszip.min.js';
+        script.onload = () => resolve(window.JSZip);
+        script.onerror = () => { jsZipLoading = null; reject(new Error('The export library (JSZip) could not be loaded. Check the internet connection.')); };
+        document.head.appendChild(script);
+      });
+      return jsZipLoading;
+    }
+
+    function renderTemplateMenus() {
+      const links = templateFiles.map(({ file, label }) => `<a class="menu-item" role="menuitem" href="${encodeURI(templatesPath + file)}" download="${escapeHtml(file)}" target="_blank" rel="noopener">${escapeHtml(label)}<small>${escapeHtml(file.slice(file.lastIndexOf('.')))}</small></a>`).join('');
+      document.querySelectorAll('[data-template-menu]').forEach(menu => {
+        menu.innerHTML = `${links}<div class="menu-divider"></div><button class="menu-item" type="button" data-template-all>Download all<small>.zip</small></button>`;
+        menu.querySelector('[data-template-all]').addEventListener('click', downloadAllTemplates);
+      });
+    }
+
+    async function downloadAllTemplates() {
+      try {
+        const JSZip = await loadJsZip();
+        const zip = new JSZip();
+        for (const { file } of templateFiles) {
+          const response = await fetch(encodeURI(templatesPath + file));
+          if (!response.ok) throw new Error(`Unable to load ${file}`);
+          zip.file(file, await response.arrayBuffer());
+        }
+        downloadBlob(await zip.generateAsync({ type: 'blob' }), 'templates.zip');
+      } catch (error) {
+        // a page opened from file:// cannot fetch the files, so fall back to the individual links
+        document.querySelectorAll('#templates-menu a.menu-item').forEach((link, index) => setTimeout(() => link.click(), index * 400));
+      }
+    }
+
+    // FRS export: sections 1.1–2.4 of the open document replace the same sections of the Word template
+    const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
+    const DOCX_FRAGMENT_NS = `xmlns:w="${W_NS}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"`;
+    const FRS_SECTIONS = [
+      { key: '1.1', heading: 'OBJECTIVES' },
+      { key: '1.2', heading: 'BACKGROUND' },
+      { key: '1.3', heading: 'SCOPE' },
+      { key: '1.4', heading: 'WORKFLOW' },
+      { key: '1.5', heading: 'ASSUMPTIONS' },
+      { key: '1.6', heading: 'USER' },
+      { key: '1.7', heading: 'TERMINOLOGY' },
+      { key: '2.1', heading: 'BUSINESS AND REQUIREMENT FUNCTION' },
+      { key: '2.2', heading: 'DATA REQUIREMENT' },
+      { key: '2.3', heading: 'REPORTING REQUIREMENT' },
+      { key: '2.4', heading: 'INTERFACE REQUIREMENT' }
+    ];
+    const FRS_BOUNDARY_HEADINGS = ['INTRODUCTION', 'REQUIREMENT', 'IMPLEMENTATION SCHEDULE'];
+    const FRS_BLOCK_PARTS = ['Detail Information', 'Page Detail', 'Screen Layout', 'Fields Detail'];
+    const TWIP_EMU = 635;
+    const PIXEL_EMU = 9525;
+    const MAX_IMAGE_HEIGHT_EMU = 12000 * TWIP_EMU;
+    const DOCX_SPACER = '<w:p><w:pPr><w:spacing w:after="0"/></w:pPr></w:p>';
+
+    const xmlEscape = value => String(value).replace(/[^\x09\x0A\x0D\x20-￿]/g, '').replace(/[&<>"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[char]));
+    const decodeEntities = value => String(value).replace(/&(amp|lt|gt|quot|#39);/g, (match, name) => ({ amp: '&', lt: '<', gt: '>', quot: '"', '#39': "'" }[name]));
+    const normalizeLabel = value => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const inlinePlain = tokens => (tokens || []).map(token => token.tokens ? inlinePlain(token.tokens) : decodeEntities(token.text ?? '')).join('');
+    const childElements = (node, name) => [...node.children].filter(child => child.localName === name);
+    const firstDescendant = (node, name) => node?.getElementsByTagNameNS(W_NS, name)[0];
+    const wAttr = (node, name) => node?.getAttributeNS(W_NS, name);
+    const docxText = node => [...node.getElementsByTagNameNS(W_NS, 't')].map(text => text.textContent).join('').trim();
+    const hasPageBreak = node => [...node.getElementsByTagNameNS(W_NS, 'br')].some(lineBreak => wAttr(lineBreak, 'type') === 'page');
+    const removeRowHeight = row => [...row.getElementsByTagNameNS(W_NS, 'trHeight')].forEach(node => node.remove());
+
+    function parseXml(text, label) {
+      const parsed = new DOMParser().parseFromString(text, 'application/xml');
+      if (parsed.getElementsByTagName('parsererror').length) throw new Error(`${label} could not be read as XML.`);
+      return parsed;
+    }
+
+    function docxFragment(doc, xml) {
+      const wrapper = parseXml(`<w:fragment ${DOCX_FRAGMENT_NS}>${xml}</w:fragment>`, 'Generated content');
+      return [...wrapper.documentElement.childNodes].map(node => doc.importNode(node, true));
+    }
+
+    function parseFrsMarkdown(markdown) {
+      const tokens = marked.lexer(parseFrontMatter(markdown).body);
+      const sections = {};
+      const blocks = [];
+      let target = null;
+      let block = null;
+      tokens.forEach(token => {
+        if (token.type === 'heading') {
+          const text = inlinePlain(token.tokens).trim();
+          const numbered = text.match(/^(\d+(?:\.\d+)*)\.?\s+(.*)$/);
+          if (numbered) {
+            block = null;
+            if (/^2\.1\.\d+$/.test(numbered[1])) {
+              block = { number: numbered[1], title: numbered[2], parts: {} };
+              blocks.push(block);
+              target = null;
+            } else {
+              target = sections[numbered[1]] = [];
+            }
+            return;
+          }
+          const part = block && FRS_BLOCK_PARTS.find(name => normalizeLabel(name) === normalizeLabel(text));
+          if (part) { target = block.parts[part] = []; return; }
+          if (token.depth === 1) { target = null; return; }
+        }
+        if (token.type !== 'space' && token.type !== 'html') target?.push(token);
+      });
+      return { sections, blocks };
+    }
+
+    function checkFrsDocument(markdown) {
+      const { sections, blocks } = parseFrsMarkdown(markdown);
+      const errors = [];
+      const warnings = [];
+      const missing = FRS_SECTIONS.filter(section => !sections[section.key]).map(section => `${section.key} ${section.heading}`);
+      if (missing.length) errors.push(`Missing numbered heading: ${missing.join(', ')}.`);
+      blocks.forEach(block => {
+        const absent = FRS_BLOCK_PARTS.filter(part => !block.parts[part]);
+        if (absent.length) errors.push(`${block.number} is missing the sub-heading: ${absent.join(', ')}.`);
+      });
+      if (!blocks.length && !missing.length) warnings.push('No 2.1.N page block was found, so section 2.1 will only contain the summary.');
+      const placeholders = [...new Set(markdown.replace(/<!--[\s\S]*?-->/g, '').match(/\{\{[^}]*\}\}/g) || [])];
+      if (placeholders.length) warnings.push(`${placeholders.length} placeholder${placeholders.length > 1 ? 's are' : ' is'} still unfilled and will be exported as written, for example ${placeholders.slice(0, 3).join(', ')}.`);
+      return { errors, warnings };
+    }
+
+    function runXml(text, font, marks = {}) {
+      const name = marks.code ? 'Consolas' : font.name;
+      const properties = `<w:rFonts w:ascii="${name}" w:eastAsia="${name}" w:hAnsi="${name}" w:cs="${name}"/>`
+        + (marks.bold || font.bold ? '<w:b/><w:bCs/>' : '')
+        + (marks.italic ? '<w:i/><w:iCs/>' : '')
+        + (marks.strike ? '<w:strike/>' : '')
+        + '<w:color w:val="000000"/>'
+        + (font.size ? `<w:sz w:val="${font.size}"/><w:szCs w:val="${font.size}"/>` : '');
+      return `<w:r><w:rPr>${properties}</w:rPr><w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r>`;
+    }
+
+    function inlineXml(tokens, font, marks = {}) {
+      return (tokens || []).map(token => {
+        switch (token.type) {
+          case 'strong': return inlineXml(token.tokens, font, { ...marks, bold: true });
+          case 'em': return inlineXml(token.tokens, font, { ...marks, italic: true });
+          case 'del': return inlineXml(token.tokens, font, { ...marks, strike: true });
+          case 'codespan': return runXml(decodeEntities(token.text), font, { ...marks, code: true });
+          case 'br': return '<w:r><w:br/></w:r>';
+          case 'image': return runXml(`[${token.text || token.href}]`, font, marks);
+          case 'html': return /^<br\s*\/?>$/i.test(token.text.trim()) ? '<w:r><w:br/></w:r>' : '';
+          default: return token.tokens ? inlineXml(token.tokens, font, marks) : runXml(decodeEntities(token.text ?? '').replace(/\s*\n\s*/g, ' '), font, marks);
+        }
+      }).join('');
+    }
+
+    function paragraphXml(runs, { left = 0, hanging = 0, line = '240', before = '', after = '120', jc = '', num = null, pageBreak = false, styleId = '', shade = '' } = {}) {
+      const numbering = num ? `<w:numPr><w:ilvl w:val="${num.level}"/><w:numId w:val="${num.id}"/></w:numPr>` : '';
+      const indent = left || hanging ? `<w:ind w:left="${left}"${hanging ? ` w:hanging="${hanging}"` : ''}/>` : '';
+      return `<w:p><w:pPr>${styleId ? `<w:pStyle w:val="${styleId}"/>` : ''}${pageBreak ? '<w:pageBreakBefore/>' : ''}${numbering}${shade ? `<w:shd w:val="clear" w:color="auto" w:fill="${shade}"/>` : ''}`
+        + `<w:spacing${before ? ` w:before="${before}"` : ''} w:after="${after}" w:line="${line}" w:lineRule="auto"/>${indent}${jc ? `<w:jc w:val="${jc}"/>` : ''}</w:pPr>${runs}</w:p>`;
+    }
+
+    function fontOf(node) {
+      const properties = firstDescendant(node, 'rPr');
+      return { name: wAttr(firstDescendant(properties, 'rFonts'), 'ascii') || 'Calibri', size: wAttr(firstDescendant(properties, 'sz'), 'val') || '' };
+    }
+
+    function styleOf(paragraph) {
+      const properties = paragraph && childElements(paragraph, 'pPr')[0];
+      const spacing = properties && childElements(properties, 'spacing')[0];
+      return {
+        font: { name: paragraph ? fontOf(paragraph).name : 'Calibri', size: (paragraph && fontOf(paragraph).size) || '24' },
+        left: Number(wAttr(properties && childElements(properties, 'ind')[0], 'left')) || 720,
+        line: wAttr(spacing, 'line') || '240',
+        jc: wAttr(properties && childElements(properties, 'jc')[0], 'val') || ''
+      };
+    }
+
+    // keeps a heading or a table header row on the same page as what follows it
+    function keepWithNext(node) {
+      const paragraphs = node.localName === 'p' ? [node] : [...node.getElementsByTagNameNS(W_NS, 'p')];
+      paragraphs.forEach(paragraph => {
+        let properties = childElements(paragraph, 'pPr')[0];
+        if (!properties) {
+          properties = paragraph.ownerDocument.createElementNS(W_NS, 'w:pPr');
+          paragraph.prepend(properties);
+        }
+        if (childElements(properties, 'keepNext').length) return;
+        const keep = paragraph.ownerDocument.createElementNS(W_NS, 'w:keepNext');
+        const style = childElements(properties, 'pStyle')[0];
+        if (style) style.after(keep); else properties.prepend(keep);
+      });
+    }
+
+    function stripDocxIds(node) {
+      [node, ...node.getElementsByTagName('*')].forEach(element => {
+        [...element.attributes].forEach(attribute => {
+          if (/^(paraId|textId|rsid\w*)$/.test(attribute.localName)) element.removeAttributeNode(attribute);
+        });
+      });
+    }
+
+    function loadImage(src) {
+      return new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error('the image could not be loaded'));
+        image.src = src;
+      });
+    }
+
+    function rasterize(image, width, height, scale) {
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(width * scale);
+      canvas.height = Math.round(height * scale);
+      const context = canvas.getContext('2d');
+      context.fillStyle = '#fff';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob.arrayBuffer()) : reject(new Error('the image could not be converted')), 'image/png'));
+    }
+
+    async function mermaidImage(source, ctx) {
+      const id = `frs-export-diagram-${++ctx.diagramCount}`;
+      try {
+        const { svg } = await mermaid.render(id, source);
+        const root = new DOMParser().parseFromString(svg, 'image/svg+xml').documentElement;
+        if (root.localName !== 'svg') throw new Error('the diagram could not be read');
+        const box = (root.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
+        const width = Math.ceil(box[2] || parseFloat(root.getAttribute('width')) || 800);
+        const height = Math.ceil(box[3] || parseFloat(root.getAttribute('height')) || 600);
+        root.setAttribute('width', width);
+        root.setAttribute('height', height);
+        root.removeAttribute('style');
+        const image = await loadImage(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(root))}`);
+        // double resolution for print, capped so a very wide diagram does not become a huge image
+        return { bytes: await rasterize(image, width, height, Math.min(2, 2600 / width)), extension: 'png', width, height };
+      } finally {
+        document.getElementById(`d${id}`)?.remove();
+      }
+    }
+
+    async function linkedImage(href) {
+      const response = await fetch(href);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      try {
+        const image = await loadImage(url);
+        const width = image.naturalWidth || 800;
+        const height = image.naturalHeight || 600;
+        const extension = { 'image/png': 'png', 'image/jpeg': 'jpeg' }[blob.type];
+        return { bytes: extension ? await blob.arrayBuffer() : await rasterize(image, width, height, 1), extension: extension || 'png', width, height };
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    function drawingXml(image, description, maxWidth, ctx) {
+      const index = ++ctx.imageCount;
+      const name = `frs-image-${index}.${image.extension}`;
+      const relationId = `rIdFrsImage${index}`;
+      ctx.zip.file(`word/media/${name}`, image.bytes);
+      ctx.relationships += `<Relationship Id="${relationId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${name}"/>`;
+      ctx.extensions.add(image.extension);
+      const maxHeight = ctx.maxImageHeight ? ctx.maxImageHeight * TWIP_EMU : MAX_IMAGE_HEIGHT_EMU;
+      const scale = Math.min(1, (maxWidth * TWIP_EMU) / (image.width * PIXEL_EMU), maxHeight / (image.height * PIXEL_EMU));
+      const cx = Math.round(image.width * PIXEL_EMU * scale);
+      const cy = Math.round(image.height * PIXEL_EMU * scale);
+      return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${1000 + index}" name="Picture ${index}" descr="${xmlEscape(description)}"/>`
+        + '<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">'
+        + `<pic:nvPicPr><pic:cNvPr id="${1000 + index}" name="${name}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${relationId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>`
+        + `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+    }
+
+    async function imageParagraphXml(load, description, style, ctx) {
+      try {
+        const image = await load();
+        // single line spacing: a multiple would make a page-high image taller than the page, which Word cannot lay out
+        return paragraphXml(drawingXml(image, description, style.maxWidth ?? ctx.textWidth - style.left, ctx), { ...style, jc: 'center', line: '240' });
+      } catch (error) {
+        ctx.notes.push(`${description} was not embedded (${error?.message ?? error}). Insert it in Word manually.`);
+        return paragraphXml(runXml(`[${description} — insert manually]`, style.font, { italic: true }), style);
+      }
+    }
+
+    async function paragraphTokenXml(token, style, ctx, overrides = {}) {
+      const inline = token.tokens || [{ type: 'text', text: token.text }];
+      const text = inline.filter(part => part.type !== 'image');
+      let xml = inlinePlain(text).trim() ? paragraphXml(inlineXml(text, style.font), { ...style, ...overrides }) : '';
+      for (const image of inline.filter(part => part.type === 'image')) {
+        xml += await imageParagraphXml(() => linkedImage(image.href), `Image ${image.href}`, style, ctx);
+      }
+      return xml;
+    }
+
+    async function listXml(list, style, ctx, level) {
+      let id = ctx.numbering.bullet;
+      if (list.ordered) {
+        id = ctx.numbering.next++;
+        ctx.numbering.instances += `<w:num w:numId="${id}"><w:abstractNumId w:val="${ctx.numbering.ordered}"/><w:lvlOverride w:ilvl="${level}"><w:startOverride w:val="${Number(list.start) || 1}"/></w:lvlOverride></w:num>`;
+      }
+      const left = style.left + 360 * (level + 1);
+      let xml = '';
+      for (const item of list.items) {
+        let first = true;
+        for (const token of item.tokens) {
+          if (token.type === 'list') xml += await listXml(token, style, ctx, level + 1);
+          else if (token.type === 'text' || token.type === 'paragraph') {
+            xml += await paragraphTokenXml(token, style, ctx, first ? { left, hanging: 360, after: '60', jc: '', num: { id, level } } : { left, after: '60' });
+            first = false;
+          } else xml += await blocksXml([token], { ...style, left }, ctx);
+        }
+      }
+      return xml;
+    }
+
+    const hasNumberColumn = token => /^(no\.?|#)$/i.test(token.header[0].text.trim());
+
+    function tableColumnWidths(token, total) {
+      const numbered = hasNumberColumn(token);
+      const lengths = token.header.map((cell, index) => Math.min(45, Math.max(6, cell.text.length, ...token.rows.map(row => (row[index]?.text ?? '').length))));
+      const fixed = numbered ? 650 : 0;
+      if (numbered) lengths[0] = 0;
+      const sum = lengths.reduce((a, b) => a + b, 0) || 1;
+      return lengths.map((length, index) => numbered && index === 0 ? fixed : Math.round((total - fixed) * length / sum));
+    }
+
+    function fillCell(ctx, cell, runs, { flush = false, left = false } = {}) {
+      const [paragraph, ...extra] = childElements(cell, 'p');
+      extra.forEach(node => node.remove());
+      [...paragraph.children].forEach(node => { if (node.localName !== 'pPr') node.remove(); });
+      const properties = childElements(paragraph, 'pPr')[0];
+      if (properties && flush) {
+        childElements(properties, 'ind').forEach(node => node.remove());
+        childElements(properties, 'spacing').forEach(node => node.removeAttributeNS(W_NS, 'before'));
+      }
+      if (properties && left) childElements(properties, 'jc').forEach(node => node.remove());
+      docxFragment(ctx.doc, runs).forEach(node => paragraph.appendChild(node));
+    }
+
+    // Export Word has no template to copy a table from, so it draws a plain bordered one
+    function plainTableXml(token, ctx) {
+      const widths = tableColumnWidths(token, ctx.textWidth);
+      const borders = ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(side => `<w:${side} w:val="single" w:sz="4" w:space="0" w:color="7F8C8D"/>`).join('');
+      const row = (cells, head) => `<w:tr>${head ? '<w:trPr><w:tblHeader/></w:trPr>' : ''}${widths.map((width, index) => `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/>${head ? '<w:shd w:val="clear" w:color="auto" w:fill="DDE6E8"/>' : ''}</w:tcPr>`
+        + `${paragraphXml(inlineXml(cells[index]?.tokens, { name: 'Calibri', size: '18', bold: head }), { after: '40' })}</w:tc>`).join('')}</w:tr>`;
+      return `<w:tbl><w:tblPr><w:tblW w:w="${widths.reduce((a, b) => a + b, 0)}" w:type="dxa"/><w:tblBorders>${borders}</w:tblBorders><w:tblLayout w:type="fixed"/>`
+        + `<w:tblCellMar><w:top w:w="40" w:type="dxa"/><w:left w:w="90" w:type="dxa"/><w:bottom w:w="0" w:type="dxa"/><w:right w:w="90" w:type="dxa"/></w:tblCellMar></w:tblPr>`
+        + `<w:tblGrid>${widths.map(width => `<w:gridCol w:w="${width}"/>`).join('')}</w:tblGrid>${row(token.header, true)}${token.rows.map(cells => row(cells, false)).join('')}</w:tbl>${DOCX_SPACER}`;
+    }
+
+    // in Make FRS Document every Markdown table reuses the look of the template's Scope table
+    function tableXml(token, ctx) {
+      if (!ctx.scopeTable) return plainTableXml(token, ctx);
+      const table = ctx.scopeTable.cloneNode(true);
+      stripDocxIds(table);
+      const [headProto, bodyProto = headProto] = childElements(table, 'tr');
+      childElements(table, 'tr').forEach(row => row.remove());
+      const grid = childElements(table, 'tblGrid')[0];
+      const protoWidths = childElements(grid, 'gridCol').map(column => Number(wAttr(column, 'w')));
+      const sameShape = protoWidths.length === token.header.length;
+      const widths = sameShape ? protoWidths : tableColumnWidths(token, ctx.textWidth);
+      const numbered = hasNumberColumn(token);
+      grid.replaceChildren(...widths.map(width => {
+        const column = ctx.doc.createElementNS(W_NS, 'w:gridCol');
+        column.setAttributeNS(W_NS, 'w:w', width);
+        return column;
+      }));
+      firstDescendant(table, 'tblW')?.setAttributeNS(W_NS, 'w:w', widths.reduce((a, b) => a + b, 0));
+      const buildRow = (proto, cells, bold) => {
+        const row = proto.cloneNode(true);
+        const protoCells = childElements(row, 'tc');
+        protoCells.forEach(cell => cell.remove());
+        cells.forEach((cell, index) => {
+          const target = protoCells[sameShape ? index : Math.min(index, 1, protoCells.length - 1)].cloneNode(true);
+          firstDescendant(target, 'tcW')?.setAttributeNS(W_NS, 'w:w', widths[index]);
+          fillCell(ctx, target, inlineXml(cell.tokens, { ...fontOf(target), bold }), { left: !bold && !sameShape && index === 0 && !numbered });
+          row.appendChild(target);
+        });
+        if (!bold) removeRowHeight(row);
+        return row;
+      };
+      table.appendChild(buildRow(headProto, token.header, true));
+      token.rows.forEach(cells => table.appendChild(buildRow(bodyProto, token.header.map((header, index) => cells[index] ?? { tokens: [] }), false)));
+      return new XMLSerializer().serializeToString(table) + DOCX_SPACER;
+    }
+
+    async function blocksXml(tokens, style, ctx) {
+      let xml = '';
+      for (const token of tokens) {
+        if (token.type === 'paragraph' || token.type === 'text') xml += await paragraphTokenXml(token, style, ctx);
+        else if (token.type === 'heading' && ctx.headingSizes) xml += paragraphXml(inlineXml(token.tokens, { name: style.font.name, size: ctx.headingSizes[token.depth - 1], bold: true }), { styleId: `Heading${token.depth}`, before: token.depth < 3 ? '360' : '240', line: style.line });
+        else if (token.type === 'heading') xml += paragraphXml(inlineXml(token.tokens, style.font, { bold: true }), style);
+        else if (token.type === 'list') xml += await listXml(token, style, ctx, 0);
+        else if (token.type === 'table') xml += tableXml(token, ctx);
+        else if (token.type === 'blockquote') xml += await blocksXml(token.tokens, { ...style, left: style.left + 360 }, ctx);
+        else if (token.type === 'code' && token.lang === 'mermaid') xml += await imageParagraphXml(() => mermaidImage(token.text, ctx), `Diagram ${ctx.diagramCount + 1}`, style, ctx);
+        else if (token.type === 'code') xml += token.text.split('\n').map(line => paragraphXml(runXml(line, { name: 'Consolas', size: '18' }), { ...style, after: '0', jc: '', shade: ctx.codeShade })).join('') + (ctx.codeShade ? DOCX_SPACER : '');
+      }
+      return xml;
+    }
+
+    function numberingDefinitions(numbering, bulletAbstract) {
+      const bulletLevels = [['', 'Symbol'], ['o', 'Courier New'], ['', 'Wingdings']].map(([text, font], level) => `<w:lvl w:ilvl="${level}"><w:start w:val="1"/><w:numFmt w:val="bullet"/><w:lvlText w:val="${text}"/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="${720 * (level + 1)}" w:hanging="360"/></w:pPr><w:rPr><w:rFonts w:ascii="${font}" w:hAnsi="${font}" w:cs="${font}" w:hint="default"/></w:rPr></w:lvl>`).join('');
+      const orderedLevels = ['decimal', 'lowerLetter', 'lowerRoman'].map((format, level) => `<w:lvl w:ilvl="${level}"><w:start w:val="1"/><w:numFmt w:val="${format}"/><w:lvlText w:val="%${level + 1}."/><w:lvlJc w:val="left"/><w:pPr><w:ind w:left="${720 * (level + 1)}" w:hanging="360"/></w:pPr></w:lvl>`).join('');
+      return {
+        abstracts: `<w:abstractNum w:abstractNumId="${bulletAbstract}"><w:multiLevelType w:val="hybridMultilevel"/>${bulletLevels}</w:abstractNum><w:abstractNum w:abstractNumId="${numbering.ordered}"><w:multiLevelType w:val="hybridMultilevel"/>${orderedLevels}</w:abstractNum>`,
+        instances: `<w:num w:numId="${numbering.bullet}"><w:abstractNumId w:val="${bulletAbstract}"/></w:num>${numbering.instances}`
+      };
+    }
+
+    // diagrams are drawn with the light print theme and plain SVG text, which a canvas can turn into a PNG
+    async function withExportDiagrams(run) {
+      mermaid.initialize({ startOnLoad: false, theme: 'base', themeVariables: printDiagramTheme, htmlLabels: false, flowchart: { htmlLabels: false } });
+      try {
+        return await run();
+      } finally {
+        mermaid.initialize({ startOnLoad: false, theme: 'base', themeVariables: screenDiagramTheme });
+      }
+    }
+
+    function keyValueTokens(tokens) {
+      const table = (tokens || []).find(token => token.type === 'table');
+      return Object.fromEntries((table?.rows || []).filter(row => row[1]).map(row => [normalizeLabel(row[0].text), row[1].tokens]));
+    }
+
+    // one 2.1.N block: a copy of the template's page table, filled from the block's four sub-sections
+    async function pageBlockXml(block, ctx) {
+      const font = fontOf(ctx.blockHeading);
+      const heading = paragraphXml(runXml(block.number, { ...font, bold: true }) + '<w:r><w:tab/></w:r>' + runXml(block.title, { ...font, bold: true }), {
+        left: Number(wAttr(firstDescendant(ctx.blockHeading, 'ind'), 'left')) || 708, after: '200', line: '276', pageBreak: true
+      });
+      const table = ctx.blockTable.cloneNode(true);
+      stripDocxIds(table);
+      // the template repeats its first row ("Detail Information") on every page, which mislabels the later parts
+      [...table.getElementsByTagNameNS(W_NS, 'tblHeader')].forEach(node => node.remove());
+      const values = { ...keyValueTokens(block.parts['Detail Information']), ...keyValueTokens(block.parts['Page Detail']) };
+      const partNames = FRS_BLOCK_PARTS.map(normalizeLabel);
+      const layoutRows = [];
+      const fieldRows = [];
+      let part = '';
+      childElements(table, 'tr').forEach(row => {
+        const cells = childElements(row, 'tc');
+        const label = normalizeLabel(docxText(cells[0]));
+        if (cells.length === 1 && partNames.includes(label)) {
+          part = label;
+          if (part === 'screenlayout' || part === 'fieldsdetail') keepWithNext(row);
+          return;
+        }
+        if (part === 'screenlayout') layoutRows.push(row);
+        else if (part === 'fieldsdetail') fieldRows.push(row);
+        else if (cells.length > 1 && values[label]) fillCell(ctx, cells.at(-1), inlineXml(values[label], fontOf(cells[0])), { flush: true });
+      });
+
+      const layoutRow = layoutRows.find(row => childElements(row, 'tc').length === 1) ?? layoutRows.at(-1);
+      if (layoutRow) {
+        layoutRows.forEach(row => { if (row !== layoutRow) row.remove(); });
+        const cell = childElements(layoutRow, 'tc').at(-1);
+        const imagesBefore = ctx.imageCount;
+        const style = { font, left: 0, line: '240', jc: '', maxWidth: (Number(wAttr(firstDescendant(cell, 'tcW'), 'w')) || 8000) - 300 };
+        const xml = await blocksXml(block.parts['Screen Layout'] ?? [], style, ctx);
+        if (xml) {
+          childElements(cell, 'p').forEach(node => node.remove());
+          docxFragment(ctx.doc, xml + (xml.endsWith('</w:p>') ? '' : DOCX_SPACER)).forEach(node => cell.appendChild(node));
+          if (ctx.imageCount > imagesBefore) removeRowHeight(layoutRow);
+        }
+      }
+
+      const fields = (block.parts['Fields Detail'] ?? []).find(token => token.type === 'table');
+      const [fieldHeader, fieldProto, ...spareRows] = fieldRows;
+      if (fieldHeader) keepWithNext(fieldHeader);
+      if (fields?.rows.length && fieldProto) {
+        spareRows.forEach(row => row.remove());
+        fields.rows.forEach(cells => {
+          const row = fieldProto.cloneNode(true);
+          childElements(row, 'tc').forEach((cell, index) => fillCell(ctx, cell, inlineXml(cells[index]?.tokens, fontOf(fieldHeader))));
+          fieldProto.before(row);
+        });
+        fieldProto.remove();
+      }
+      return heading + new XMLSerializer().serializeToString(table) + DOCX_SPACER;
+    }
+
+    async function buildFrsDocx(templateBuffer, markdown) {
+      const JSZip = await loadJsZip();
+      const zip = await JSZip.loadAsync(templateBuffer).catch(() => { throw new Error('The chosen template is not a Word document (.docx).'); });
+      const readPart = path => {
+        const part = zip.file(path);
+        if (!part) throw new Error(`The template is not a usable Word document (${path} is missing).`);
+        return part.async('string');
+      };
+      const doc = parseXml(await readPart('word/document.xml'), 'The template');
+      const body = firstDescendant(doc, 'body');
+      const { sections, blocks } = parseFrsMarkdown(markdown);
+
+      const headings = new Map();
+      const names = [...FRS_SECTIONS.map(section => section.heading), ...FRS_BOUNDARY_HEADINGS];
+      childElements(body, 'p').forEach(paragraph => {
+        const text = docxText(paragraph).toUpperCase();
+        if (names.includes(text) && !headings.has(text)) headings.set(text, paragraph);
+      });
+      const absent = names.filter(name => !headings.has(name));
+      if (absent.length) throw new Error(`The template is missing the heading: ${absent.join(', ')}.`);
+      const boundaries = new Set(headings.values());
+      const rangeAfter = heading => {
+        const nodes = [];
+        for (let node = heading.nextElementSibling; node && !boundaries.has(node) && node.localName !== 'sectPr'; node = node.nextElementSibling) nodes.push(node);
+        return nodes;
+      };
+
+      const pageRange = rangeAfter(headings.get('BUSINESS AND REQUIREMENT FUNCTION'));
+      const numberingXml = await readPart('word/numbering.xml');
+      const highest = (pattern) => Math.max(0, ...[...numberingXml.matchAll(pattern)].map(match => Number(match[1])));
+      const abstractBase = highest(/<w:abstractNum [^>]*w:abstractNumId="(\d+)"/g) + 1;
+      const numberBase = highest(/<w:num [^>]*w:numId="(\d+)"/g) + 1;
+      const page = firstDescendant(childElements(body, 'sectPr')[0], 'pgSz');
+      const margins = firstDescendant(childElements(body, 'sectPr')[0], 'pgMar');
+      const ctx = {
+        zip, doc, notes: [], imageCount: 0, diagramCount: 0, relationships: '', extensions: new Set(),
+        textWidth: (Number(wAttr(page, 'w')) - Number(wAttr(margins, 'left')) - Number(wAttr(margins, 'right'))) || 9000,
+        scopeTable: rangeAfter(headings.get('SCOPE')).find(node => node.localName === 'tbl'),
+        blockHeading: pageRange.find(node => node.localName === 'p' && /^2\.1\.\d/.test(docxText(node))),
+        blockTable: pageRange.find(node => node.localName === 'tbl'),
+        numbering: { bullet: numberBase, ordered: abstractBase + 1, next: numberBase + 1, instances: '' }
+      };
+      if (!ctx.scopeTable || !ctx.blockHeading || !ctx.blockTable) throw new Error('The template is missing the Scope table or the 2.1.1 page table that the export copies its layout from.');
+
+      await withExportDiagrams(async () => {
+        for (const section of FRS_SECTIONS) {
+          const heading = headings.get(section.heading);
+          keepWithNext(heading);
+          const range = rangeAfter(heading);
+          const end = (range.at(-1) ?? heading).nextElementSibling;
+          const style = styleOf(range.find(node => node.localName === 'p' && docxText(node)));
+          const pages = section.key === '2.1';
+          // a template paragraph that only holds a page break keeps the next heading on a new page
+          const kept = pages ? [] : range.filter(node => node.localName === 'p' && !docxText(node) && hasPageBreak(node));
+          range.forEach(node => { if (!kept.includes(node)) node.remove(); });
+          let xml = await blocksXml(sections[section.key] ?? [], style, ctx) || paragraphXml('', style);
+          if (pages) for (const block of blocks) xml += await pageBlockXml(block, ctx);
+          docxFragment(doc, xml + (xml.endsWith(DOCX_SPACER) ? '' : DOCX_SPACER)).forEach(node => body.insertBefore(node, kept[0] ?? end));
+        }
+      });
+
+      // browsers differ on whether the serializer repeats the XML declaration, so write exactly one
+      zip.file('word/document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${new XMLSerializer().serializeToString(doc).replace(/^<\?xml[^>]*\?>\s*/, '')}`);
+      const { abstracts, instances } = numberingDefinitions(ctx.numbering, abstractBase);
+      const firstInstance = numberingXml.search(/<w:num /);
+      zip.file('word/numbering.xml', firstInstance === -1
+        ? numberingXml.replace('</w:numbering>', `${abstracts}${instances}</w:numbering>`)
+        : `${numberingXml.slice(0, firstInstance)}${abstracts}${numberingXml.slice(firstInstance)}`.replace('</w:numbering>', `${instances}</w:numbering>`));
+
+      if (ctx.imageCount) {
+        zip.file('word/_rels/document.xml.rels', (await readPart('word/_rels/document.xml.rels')).replace('</Relationships>', `${ctx.relationships}</Relationships>`));
+        let types = await readPart('[Content_Types].xml');
+        ctx.extensions.forEach(extension => {
+          if (!types.includes(`Extension="${extension}"`)) types = types.replace(/(<Types[^>]*>)/, `$1<Default Extension="${extension}" ContentType="image/${extension}"/>`);
+        });
+        zip.file('[Content_Types].xml', types);
+      }
+
+      const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', mimeType: DOCX_MIME });
+      return { blob, notes: ctx.notes };
+    }
+
+    // Export Word: the open document as a plain .docx built from scratch, with no template involved
+    const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    const WORD_HEADING_SIZES = ['36', '30', '26', '24', '22', '22'];
+    const WORD_PAGE_MARGIN = 1134;
+
+    async function buildWordDocx(markdown) {
+      const JSZip = await loadJsZip();
+      const zip = new JSZip();
+      const { rows, body } = parseFrontMatter(markdown);
+      const tokens = marked.lexer(body);
+      // a table with many columns is unreadable on a portrait page, so such a document is laid out sideways
+      const landscape = tokens.some(token => token.type === 'table' && token.header.length >= 7);
+      const page = landscape ? { width: 16838, height: 11906 } : { width: 11906, height: 16838 };
+      const ctx = {
+        zip, notes: [], imageCount: 0, diagramCount: 0, relationships: '', extensions: new Set(),
+        textWidth: page.width - WORD_PAGE_MARGIN * 2, maxImageHeight: page.height - WORD_PAGE_MARGIN * 2 - 700,
+        headingSizes: WORD_HEADING_SIZES, codeShade: 'F2F4F5',
+        numbering: { bullet: 1, ordered: 1, next: 2, instances: '' }
+      };
+      const style = { font: { name: 'Calibri', size: '22' }, left: 0, line: '264', jc: '' };
+      const plainCell = text => ({ text, tokens: [{ type: 'text', text }] });
+      const content = await withExportDiagrams(async () => {
+        const frontMatter = rows?.length ? plainTableXml({ header: ['Field', 'Value'].map(plainCell), rows: rows.map(row => row.map(plainCell)) }, ctx) : '';
+        return frontMatter + await blocksXml(tokens, style, ctx);
+      });
+
+      const declaration = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
+      const section = `<w:sectPr><w:pgSz w:w="${page.width}" w:h="${page.height}"${landscape ? ' w:orient="landscape"' : ''}/><w:pgMar w:top="${WORD_PAGE_MARGIN}" w:right="${WORD_PAGE_MARGIN}" w:bottom="${WORD_PAGE_MARGIN}" w:left="${WORD_PAGE_MARGIN}" w:header="708" w:footer="708" w:gutter="0"/></w:sectPr>`;
+      zip.file('word/document.xml', `${declaration}<w:document ${DOCX_FRAGMENT_NS}><w:body>${content || DOCX_SPACER}${section}</w:body></w:document>`);
+      const headingStyles = WORD_HEADING_SIZES.map((size, index) => `<w:style w:type="paragraph" w:styleId="Heading${index + 1}"><w:name w:val="heading ${index + 1}"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:qFormat/><w:pPr><w:keepNext/><w:keepLines/><w:outlineLvl w:val="${index}"/></w:pPr><w:rPr><w:b/><w:bCs/><w:sz w:val="${size}"/><w:szCs w:val="${size}"/></w:rPr></w:style>`).join('');
+      zip.file('word/styles.xml', `${declaration}<w:styles xmlns:w="${W_NS}"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:eastAsia="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="120" w:line="264" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults>`
+        + `<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style>${headingStyles}</w:styles>`);
+      const { abstracts, instances } = numberingDefinitions(ctx.numbering, 0);
+      zip.file('word/numbering.xml', `${declaration}<w:numbering xmlns:w="${W_NS}">${abstracts}${instances}</w:numbering>`);
+      const officeRelation = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+      zip.file('word/_rels/document.xml.rels', `${declaration}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="${officeRelation}/styles" Target="styles.xml"/><Relationship Id="rIdNumbering" Type="${officeRelation}/numbering" Target="numbering.xml"/>${ctx.relationships}</Relationships>`);
+      zip.file('_rels/.rels', `${declaration}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${officeRelation}/officeDocument" Target="word/document.xml"/></Relationships>`);
+      const wordml = 'application/vnd.openxmlformats-officedocument.wordprocessingml';
+      zip.file('[Content_Types].xml', `${declaration}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>`
+        + `${[...ctx.extensions].map(extension => `<Default Extension="${extension}" ContentType="image/${extension}"/>`).join('')}<Override PartName="/word/document.xml" ContentType="${wordml}.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="${wordml}.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="${wordml}.numbering+xml"/></Types>`);
+      return { blob: await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', mimeType: DOCX_MIME }), notes: ctx.notes };
+    }
+
+    const exportModal = document.getElementById('export-modal');
+    const exportTitle = document.getElementById('export-modal-title');
+    const exportStatus = document.getElementById('export-status');
+    const exportIssues = document.getElementById('export-issues');
+    const exportTemplateRow = document.getElementById('export-template-row');
+    const exportRun = document.getElementById('export-run');
+    let frsTemplateBuffer = null;
+
+    function renderExportIssues(groups) {
+      exportIssues.innerHTML = groups.filter(group => group.items.length).map(group => `<p class="export-heading">${group.title}</p><ul class="export-list ${group.kind}">${group.items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`).join('');
+    }
+
+    function updateExportReady() {
+      exportRun.disabled = !frsTemplateBuffer;
+      exportTemplateRow.hidden = false;
+      exportStatus.textContent = frsTemplateBuffer
+        ? `Sections 1.1 to 2.4 of ${document.getElementById('source-name').textContent} will be placed into the Word template. The rest of the template stays as it is.`
+        : 'Make FRS Document needs the FRS Word template. Choose the template file (.docx) to continue.';
+    }
+
+    const exportFileName = () => `${document.getElementById('source-name').textContent.replace(/\.(md|markdown)$/i, '')}.docx`;
+
+    function showExportResult(notes) {
+      if (!notes.length) { closeExportModal(); return; }
+      exportStatus.textContent = 'The document was exported, with the notes below.';
+      renderExportIssues([{ title: 'Notes', kind: 'is-warning', items: notes }]);
+      exportRun.hidden = true;
+    }
+
+    function showExportError(error) {
+      exportStatus.textContent = 'The document could not be exported.';
+      renderExportIssues([{ title: 'Error', kind: 'is-error', items: [error?.message ?? String(error)] }]);
+    }
+
+    async function exportWord() {
+      sidebar.classList.remove('open');
+      exportTitle.textContent = 'Export Word (.docx)';
+      exportModal.hidden = false;
+      exportRun.hidden = true;
+      exportTemplateRow.hidden = true;
+      renderExportIssues([]);
+      if (!currentMarkdown) { exportStatus.textContent = 'Open a Markdown file first, then export it.'; return; }
+      exportStatus.textContent = 'Building the document…';
+      try {
+        const { blob, notes } = await buildWordDocx(currentMarkdown);
+        downloadBlob(blob, exportFileName());
+        showExportResult(notes);
+      } catch (error) {
+        showExportError(error);
+      }
+    }
+
+    function openExportModal() {
+      sidebar.classList.remove('open');
+      exportTitle.textContent = 'Make FRS Document (.docx)';
+      exportModal.hidden = false;
+      exportRun.hidden = false;
+      exportRun.disabled = true;
+      exportTemplateRow.hidden = true;
+      renderExportIssues([]);
+      if (!currentMarkdown) { exportStatus.textContent = 'Open a Markdown file first, then export it.'; return; }
+      const { errors, warnings } = checkFrsDocument(currentMarkdown);
+      renderExportIssues([{ title: 'Cannot export', kind: 'is-error', items: errors }, { title: 'Check before sending', kind: 'is-warning', items: errors.length ? [] : warnings }]);
+      if (errors.length) { exportStatus.textContent = 'This document does not follow the FRS content template, so it cannot be placed into the Word template.'; return; }
+      updateExportReady();
+    }
+    function closeExportModal() { exportModal.hidden = true; }
+
+    document.getElementById('export-template-picker').addEventListener('change', async event => {
+      const file = event.target.files[0];
+      if (!file) return;
+      document.getElementById('export-template-name').textContent = file.name;
+      frsTemplateBuffer = await file.arrayBuffer();
+      updateExportReady();
+    });
+    exportRun.addEventListener('click', async () => {
+      exportRun.disabled = true;
+      exportStatus.textContent = 'Building the document…';
+      try {
+        const { blob, notes } = await buildFrsDocx(frsTemplateBuffer, currentMarkdown);
+        downloadBlob(blob, exportFileName());
+        showExportResult(notes);
+      } catch (error) {
+        showExportError(error);
+        exportRun.disabled = false;
+      }
+    });
+    document.getElementById('export-cancel').addEventListener('click', closeExportModal);
+    document.getElementById('export-modal-close').addEventListener('click', closeExportModal);
+    exportModal.addEventListener('click', event => { if (event.target === exportModal) closeExportModal(); });
+    document.addEventListener('keydown', event => {
+      if (event.key !== 'Escape') return;
+      closeMenus();
+      if (!exportModal.hidden) closeExportModal();
+    });
+    document.getElementById('export-word').addEventListener('click', exportWord);
+    document.getElementById('export-word-mobile').addEventListener('click', exportWord);
+    document.getElementById('export-frs').addEventListener('click', openExportModal);
+    document.getElementById('export-frs-mobile').addEventListener('click', openExportModal);
+    renderTemplateMenus();
 
     let collapsedDetailsBeforePrint = [];
     function openAllContentDetails() {
