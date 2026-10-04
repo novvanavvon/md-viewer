@@ -30,8 +30,13 @@ Karena itu ada aturan yang perlu dijaga:
    Jangan menulis placeholder dengan kurung siku <...> — itu dibaca sebagai tag HTML dan hilang saat dirender.
 5. Elemen yang dipakai hanya: paragraf, bullet/numbered list, tabel, blok mermaid, dan gambar
    ![caption](path). Hindari HTML mentah, tabel di dalam tabel, dan heading tambahan di luar struktur ini.
-6. Front matter di atas mengisi judul & header dokumen ("[num] - [Judul]", tanggal). Key-nya jangan diganti.
+6. Front matter di atas mengisi cover & header dokumen Word: "title" mengisi <Judul>, "frs_number" mengisi [num].
+   Keduanya WAJIB diisi dan key-nya jangan diganti. Tanggal dokumen (<DateNow>) diisi otomatis dengan tanggal
+   saat export, bukan dari "document_date".
 7. Komentar HTML seperti ini tidak tampil di viewer dan tidak ikut dikonversi.
+8. Yang diisi manual di Word, JANGAN diisi di file ini (biarkan kosong, tanpa placeholder):
+   - Running ID, Application ID, dan Hierarchy ID - Name di tiap blok 2.1.N.
+   - Gambar Screen Layout di tiap blok 2.1.N, kecuali file gambarnya memang sudah disediakan.
 -->
 
 # {{Nomor FRS}} - {{Judul}}
@@ -101,8 +106,8 @@ flowchart TD
 
 <!-- Singkatan dan istilah yang dipakai di dokumen ini. -->
 
-| No | Term | Description |
-|----|------|-------------|
+| No | Abbreviation | Description |
+|----|--------------|-------------|
 | 1 | {{Istilah / singkatan}} | {{Kepanjangan dan artinya}} |
 | 2 | {{...}} | {{...}} |
 
@@ -120,12 +125,15 @@ flowchart TD
 
 ##### Detail Information
 
+<!-- Running ID, Application ID, dan Hierarchy ID - Name dibiarkan kosong: diisi manual di Word.
+     Barisnya tetap ditulis, hanya nilainya yang kosong. -->
+
 | Field | Value |
 |-------|-------|
-| Running ID | {{...}} |
-| Application ID | {{...}} |
+| Running ID | |
+| Application ID | |
 | Application Name | {{...}} |
-| Hierarchy ID - Name | {{Isi jika ada, jika tidak tulis N/A}} |
+| Hierarchy ID - Name | |
 
 ##### Page Detail
 
@@ -141,11 +149,10 @@ flowchart TD
 
 ##### Screen Layout
 
-<!-- 1 gambar atau lebih. Path relatif terhadap file ini, mis.:
+<!-- Dibiarkan kosong: screenshot dimasukkan manual di Word. Heading "Screen Layout" tetap ditulis.
+     Hanya jika file gambarnya sudah disediakan, boleh ditulis di sini (path relatif terhadap file ini), mis.:
      ![Screen Layout - Nama Halaman](images/2-1-1-nama-halaman.png)
-     Beri penomoran pada gambar (1, 2, 3, ...) bila ingin dirujuk dari kolom Fields. -->
-
-{{Gambar screen layout}}
+     Jangan menulis placeholder atau deskripsi teks sebagai pengganti gambar. -->
 
 ##### Fields Detail
 

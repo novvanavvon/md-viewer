@@ -114,6 +114,7 @@
     .menu-toggle::after { content: '▾'; margin-left: 7px; color: var(--muted); font-size: 11px; }
     .menu-list { position: absolute; z-index: 20; top: calc(100% + 8px); right: 0; min-width: 250px; display: grid; gap: 2px; padding: 6px; background: var(--surface-raised); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); }
     .menu-list[hidden] { display: none; }
+    #print-menu { width: max-content; }
     .menu-item { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; width: 100%; padding: 9px 11px; color: var(--ink); background: transparent; border: 0; border-radius: 7px; font: 13px Arial, sans-serif; text-align: left; text-decoration: none; }
     .menu-item:hover { color: var(--blue-dark); background: var(--cyan-soft); }
     .menu-item small { color: var(--muted); font: 11px Consolas, monospace; white-space: nowrap; }
@@ -421,6 +422,7 @@
             <button class="menu-item" id="print" type="button">Print / save as PDF</button>
             <button class="menu-item" id="export-word" type="button">Export Word<small>.docx</small></button>
             <button class="menu-item" id="export-frs" type="button">Make FRS Document<small>.docx</small></button>
+            <button class="menu-item" id="export-tls" type="button">Make Scoping and Timeline Document<small>.docx</small></button>
           </div>
         </div>
       </div>
@@ -434,6 +436,9 @@
         </div>
         <div class="sidebar-actions">
           <button class="tool-button" id="export-frs-mobile" type="button">Make FRS Document</button>
+        </div>
+        <div class="sidebar-actions">
+          <button class="tool-button" id="export-tls-mobile" type="button">Make Scoping and Timeline Document</button>
         </div>
         <div class="sidebar-actions">
           <button class="tool-button" id="export-word-mobile" type="button">Export Word</button>
@@ -1262,6 +1267,11 @@
     ];
     const FRS_BOUNDARY_HEADINGS = ['INTRODUCTION', 'REQUIREMENT', 'IMPLEMENTATION SCHEDULE'];
     const FRS_BLOCK_PARTS = ['Detail Information', 'Page Detail', 'Screen Layout', 'Fields Detail'];
+    // Scoping and Timeline export: chapter 1 is the same as the FRS, so only sections 1.1–1.7 go into its Word template
+    const TEMPLATE_EXPORTS = {
+      frs: { label: 'Make FRS Document', template: 'FRS', range: '1.1 to 2.4', sections: FRS_SECTIONS, boundaries: FRS_BOUNDARY_HEADINGS, pages: true, numbered: true },
+      tls: { label: 'Make Scoping and Timeline Document', template: 'Scoping and Timeline', range: '1.1 to 1.7', sections: FRS_SECTIONS.filter(section => section.key.startsWith('1.')), boundaries: ['INTRODUCTION', 'SCHEDULING'], pages: false }
+    };
     const TWIP_EMU = 635;
     const PIXEL_EMU = 9525;
     const MAX_IMAGE_HEIGHT_EMU = 12000 * TWIP_EMU;
@@ -1283,6 +1293,9 @@
       if (parsed.getElementsByTagName('parsererror').length) throw new Error(`${label} could not be read as XML.`);
       return parsed;
     }
+
+    // browsers differ on whether the serializer repeats the XML declaration, so write exactly one
+    const serializeDocx = doc => `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${new XMLSerializer().serializeToString(doc).replace(/^<\?xml[^>]*\?>\s*/, '')}`;
 
     function docxFragment(doc, xml) {
       const wrapper = parseXml(`<w:fragment ${DOCX_FRAGMENT_NS}>${xml}</w:fragment>`, 'Generated content');
@@ -1319,18 +1332,57 @@
       return { sections, blocks };
     }
 
-    function checkFrsDocument(markdown) {
+    // the title and number that fill the template's cover and page header: the front matter, or else the document's own H1
+    function exportMetadata(markdown) {
+      const { rows, body } = parseFrontMatter(markdown);
+      const front = Object.fromEntries((rows ?? []).map(([key, value]) => [key, value.replace(/^(["'])(.*)\1$/, '$2')]));
+      const filled = value => value && !value.includes('{{') ? value : '';
+      const number = filled(front.frs_number);
+      const heading = marked.lexer(body).find(token => token.type === 'heading' && token.depth === 1);
+      const headingText = heading ? inlinePlain(heading.tokens).trim() : '';
+      const title = filled(front.title) || filled(number && headingText.startsWith(number) ? headingText.slice(number.length).replace(/^\s*[-–:]\s*/, '') : headingText);
+      return { number, title };
+    }
+
+    // a template placeholder is often split over several runs, so it is matched on the paragraph's whole text
+    function replaceDocxText(root, replacements) {
+      let changed = false;
+      [...root.getElementsByTagNameNS(W_NS, 'p')].forEach(paragraph => {
+        replacements.forEach(([pattern, value]) => {
+          const texts = [...paragraph.getElementsByTagNameNS(W_NS, 't')];
+          const match = pattern.exec(texts.map(node => node.textContent).join(''));
+          if (!match) return;
+          let offset = 0;
+          texts.forEach(node => {
+            const text = node.textContent;
+            const start = match.index - offset;
+            const end = start + match[0].length;
+            offset += text.length;
+            if (end <= 0 || start >= text.length) return;
+            node.textContent = text.slice(0, Math.max(start, 0)) + (start >= 0 ? value : '') + text.slice(Math.min(end, text.length));
+            node.setAttribute('xml:space', 'preserve');
+          });
+          changed = true;
+        });
+      });
+      return changed;
+    }
+
+    function checkFrsDocument(markdown, kind) {
       const { sections, blocks } = parseFrsMarkdown(markdown);
       const errors = [];
       const warnings = [];
-      const missing = FRS_SECTIONS.filter(section => !sections[section.key]).map(section => `${section.key} ${section.heading}`);
+      if (!exportMetadata(markdown).title) warnings.push('The document has no title (front matter "title" or a # heading), so the title placeholder of the Word template is left as it is.');
+      const missing = kind.sections.filter(section => !sections[section.key]).map(section => `${section.key} ${section.heading}`);
       if (missing.length) errors.push(`Missing numbered heading: ${missing.join(', ')}.`);
-      blocks.forEach(block => {
+      if (kind.pages) blocks.forEach(block => {
         const absent = FRS_BLOCK_PARTS.filter(part => !block.parts[part]);
         if (absent.length) errors.push(`${block.number} is missing the sub-heading: ${absent.join(', ')}.`);
       });
-      if (!blocks.length && !missing.length) warnings.push('No 2.1.N page block was found, so section 2.1 will only contain the summary.');
-      const placeholders = [...new Set(markdown.replace(/<!--[\s\S]*?-->/g, '').match(/\{\{[^}]*\}\}/g) || [])];
+      if (kind.pages && !blocks.length && !missing.length) warnings.push('No 2.1.N page block was found, so section 2.1 will only contain the summary.');
+      // an export that leaves chapter 2 out only reports the placeholders of the sections it does take
+      const exported = kind.pages ? markdown : kind.sections.flatMap(section => sections[section.key] ?? []).map(token => token.raw).join('\n');
+      const placeholders = [...new Set(exported.replace(/<!--[\s\S]*?-->/g, '').match(/\{\{[^}]*\}\}/g) || [])];
       if (placeholders.length) warnings.push(`${placeholders.length} placeholder${placeholders.length > 1 ? 's are' : ' is'} still unfilled and will be exported as written, for example ${placeholders.slice(0, 3).join(', ')}.`);
       return { errors, warnings };
     }
@@ -1558,24 +1610,48 @@
         + `<w:tblGrid>${widths.map(width => `<w:gridCol w:w="${width}"/>`).join('')}</w:tblGrid>${row(token.header, true)}${token.rows.map(cells => row(cells, false)).join('')}</w:tbl>${DOCX_SPACER}`;
     }
 
-    // in Make FRS Document every Markdown table reuses the look of the template's Scope table
+    // the Terminology table of the Scoping and Timeline template, for a template that has none of its own (the FRS one)
+    const TERMINOLOGY_WIDTHS = [504, 1770, 5784];
+    const TERMINOLOGY_INDENT = 851;
+    const sumOf = values => values.reduce((a, b) => a + b, 0);
+
+    function terminologyTableXml() {
+      const widths = TERMINOLOGY_WIDTHS;
+      const borders = ['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(side => `<w:${side} w:val="single" w:sz="4" w:space="0" w:color="000000"/>`).join('');
+      const row = head => `<w:tr>${widths.map((width, index) => `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/></w:tcPr><w:p><w:pPr><w:spacing w:after="0" w:line="240" w:lineRule="auto"/>${head || index === 0 ? '<w:jc w:val="center"/>' : ''}`
+        + `<w:rPr><w:rFonts w:ascii="Calibri" w:eastAsia="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>${head ? '<w:b/>' : ''}<w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr></w:pPr></w:p></w:tc>`).join('')}</w:tr>`;
+      return `<w:tbl><w:tblPr><w:tblW w:w="${sumOf(widths)}" w:type="dxa"/><w:tblInd w:w="${TERMINOLOGY_INDENT}" w:type="dxa"/><w:tblBorders>${borders}</w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr>`
+        + `<w:tblGrid>${widths.map(width => `<w:gridCol w:w="${width}"/>`).join('')}</w:tblGrid>${row(true)}${row(false)}</w:tbl>`;
+    }
+
+    // in the template exports a Markdown table reuses the look of the template's Scope table, or of the Terminology table in that section
     function tableXml(token, ctx) {
       if (!ctx.scopeTable) return plainTableXml(token, ctx);
-      const table = ctx.scopeTable.cloneNode(true);
+      const table = (ctx.sectionTable ?? ctx.scopeTable).cloneNode(true);
       stripDocxIds(table);
       const [headProto, bodyProto = headProto] = childElements(table, 'tr');
       childElements(table, 'tr').forEach(row => row.remove());
       const grid = childElements(table, 'tblGrid')[0];
       const protoWidths = childElements(grid, 'gridCol').map(column => Number(wAttr(column, 'w')));
       const sameShape = protoWidths.length === token.header.length;
-      const widths = sameShape ? protoWidths : tableColumnWidths(token, ctx.textWidth);
+      // every table sits where the Terminology table does: the same indent from the margin and the same total width
+      const total = ctx.sectionTable ? sumOf(protoWidths) : sumOf(TERMINOLOGY_WIDTHS);
+      const widths = sameShape ? protoWidths.map(width => Math.round(width * total / sumOf(protoWidths))) : tableColumnWidths(token, total);
+      if (!ctx.sectionTable) {
+        const properties = childElements(table, 'tblPr')[0];
+        childElements(properties, 'tblInd').forEach(node => node.remove());
+        const indent = ctx.doc.createElementNS(W_NS, 'w:tblInd');
+        indent.setAttributeNS(W_NS, 'w:w', TERMINOLOGY_INDENT);
+        indent.setAttributeNS(W_NS, 'w:type', 'dxa');
+        (childElements(properties, 'tblCellSpacing')[0] ?? childElements(properties, 'jc')[0] ?? childElements(properties, 'tblW')[0]).after(indent);
+      }
       const numbered = hasNumberColumn(token);
       grid.replaceChildren(...widths.map(width => {
         const column = ctx.doc.createElementNS(W_NS, 'w:gridCol');
         column.setAttributeNS(W_NS, 'w:w', width);
         return column;
       }));
-      firstDescendant(table, 'tblW')?.setAttributeNS(W_NS, 'w:w', widths.reduce((a, b) => a + b, 0));
+      firstDescendant(table, 'tblW')?.setAttributeNS(W_NS, 'w:w', sumOf(widths));
       const buildRow = (proto, cells, bold) => {
         const row = proto.cloneNode(true);
         const protoCells = childElements(row, 'tc');
@@ -1641,6 +1717,23 @@
       });
       const table = ctx.blockTable.cloneNode(true);
       stripDocxIds(table);
+      // the page table sits where the other tables do: the Terminology table's indent and total width, columns scaled to fit
+      const columns = childElements(childElements(table, 'tblGrid')[0], 'gridCol');
+      const scale = sumOf(TERMINOLOGY_WIDTHS) / sumOf(columns.map(column => Number(wAttr(column, 'w'))));
+      const columnWidths = columns.map(column => Math.round(Number(wAttr(column, 'w')) * scale));
+      columnWidths[columnWidths.length - 1] += sumOf(TERMINOLOGY_WIDTHS) - sumOf(columnWidths);
+      columns.forEach((column, index) => column.setAttributeNS(W_NS, 'w:w', columnWidths[index]));
+      const tableProperties = childElements(table, 'tblPr')[0];
+      childElements(tableProperties, 'tblW')[0]?.setAttributeNS(W_NS, 'w:w', sumOf(columnWidths));
+      childElements(tableProperties, 'tblInd')[0]?.setAttributeNS(W_NS, 'w:w', TERMINOLOGY_INDENT);
+      childElements(table, 'tr').forEach(row => {
+        let position = 0;
+        childElements(row, 'tc').forEach(cell => {
+          const span = Number(wAttr(firstDescendant(cell, 'gridSpan'), 'val')) || 1;
+          firstDescendant(cell, 'tcW')?.setAttributeNS(W_NS, 'w:w', sumOf(columnWidths.slice(position, position + span)));
+          position += span;
+        });
+      });
       // the template repeats its first row ("Detail Information") on every page, which mislabels the later parts
       [...table.getElementsByTagNameNS(W_NS, 'tblHeader')].forEach(node => node.remove());
       const values = { ...keyValueTokens(block.parts['Detail Information']), ...keyValueTokens(block.parts['Page Detail']) };
@@ -1690,7 +1783,7 @@
       return heading + new XMLSerializer().serializeToString(table) + DOCX_SPACER;
     }
 
-    async function buildFrsDocx(templateBuffer, markdown) {
+    async function buildTemplateDocx(templateBuffer, markdown, kind) {
       const JSZip = await loadJsZip();
       const zip = await JSZip.loadAsync(templateBuffer).catch(() => { throw new Error('The chosen template is not a Word document (.docx).'); });
       const readPart = path => {
@@ -1702,8 +1795,19 @@
       const body = firstDescendant(doc, 'body');
       const { sections, blocks } = parseFrsMarkdown(markdown);
 
+      // the cover and the page headers: title and number from the document, and today's date
+      const { number, title } = exportMetadata(markdown);
+      const fills = [[/<datenow>|xx\/xx\/xxxx/i, new Date().toLocaleDateString('en-GB')]];
+      if (title) fills.push([/\[<judul>\]|<judul>|\[judul\]/i, title]);
+      if (number && kind.numbered) fills.push([/\[num\]/i, number]);
+      replaceDocxText(doc, fills);
+      for (const name of Object.keys(zip.files).filter(name => /^word\/(header|footer)\d*\.xml$/.test(name))) {
+        const part = parseXml(await readPart(name), 'The template');
+        if (replaceDocxText(part, fills)) zip.file(name, serializeDocx(part));
+      }
+
       const headings = new Map();
-      const names = [...FRS_SECTIONS.map(section => section.heading), ...FRS_BOUNDARY_HEADINGS];
+      const names = [...kind.sections.map(section => section.heading), ...kind.boundaries];
       childElements(body, 'p').forEach(paragraph => {
         const text = docxText(paragraph).toUpperCase();
         if (names.includes(text) && !headings.has(text)) headings.set(text, paragraph);
@@ -1717,7 +1821,7 @@
         return nodes;
       };
 
-      const pageRange = rangeAfter(headings.get('BUSINESS AND REQUIREMENT FUNCTION'));
+      const pageRange = kind.pages ? rangeAfter(headings.get('BUSINESS AND REQUIREMENT FUNCTION')) : [];
       const numberingXml = await readPart('word/numbering.xml');
       const highest = (pattern) => Math.max(0, ...[...numberingXml.matchAll(pattern)].map(match => Number(match[1])));
       const abstractBase = highest(/<w:abstractNum [^>]*w:abstractNumId="(\d+)"/g) + 1;
@@ -1732,18 +1836,20 @@
         blockTable: pageRange.find(node => node.localName === 'tbl'),
         numbering: { bullet: numberBase, ordered: abstractBase + 1, next: numberBase + 1, instances: '' }
       };
-      if (!ctx.scopeTable || !ctx.blockHeading || !ctx.blockTable) throw new Error('The template is missing the Scope table or the 2.1.1 page table that the export copies its layout from.');
+      if (!ctx.scopeTable) throw new Error('The template is missing the Scope table that the export copies its table layout from.');
+      if (kind.pages && (!ctx.blockHeading || !ctx.blockTable)) throw new Error('The template is missing the 2.1.1 page table that the export copies its layout from.');
 
       await withExportDiagrams(async () => {
-        for (const section of FRS_SECTIONS) {
+        for (const section of kind.sections) {
           const heading = headings.get(section.heading);
           keepWithNext(heading);
           const range = rangeAfter(heading);
           const end = (range.at(-1) ?? heading).nextElementSibling;
           const style = styleOf(range.find(node => node.localName === 'p' && docxText(node)));
           const pages = section.key === '2.1';
-          // a template paragraph that only holds a page break keeps the next heading on a new page
-          const kept = pages ? [] : range.filter(node => node.localName === 'p' && !docxText(node) && hasPageBreak(node));
+          ctx.sectionTable = section.heading === 'TERMINOLOGY' ? range.find(node => node.localName === 'tbl') ?? docxFragment(doc, terminologyTableXml())[0] : null;
+          // a template paragraph that only holds a page or section break keeps the next heading on a new page, and the section its own page setup
+          const kept = pages ? [] : range.filter(node => node.localName === 'p' && !docxText(node) && (hasPageBreak(node) || firstDescendant(node, 'sectPr')));
           range.forEach(node => { if (!kept.includes(node)) node.remove(); });
           let xml = await blocksXml(sections[section.key] ?? [], style, ctx) || paragraphXml('', style);
           if (pages) for (const block of blocks) xml += await pageBlockXml(block, ctx);
@@ -1751,8 +1857,7 @@
         }
       });
 
-      // browsers differ on whether the serializer repeats the XML declaration, so write exactly one
-      zip.file('word/document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n${new XMLSerializer().serializeToString(doc).replace(/^<\?xml[^>]*\?>\s*/, '')}`);
+      zip.file('word/document.xml', serializeDocx(doc));
       const { abstracts, instances } = numberingDefinitions(ctx.numbering, abstractBase);
       const firstInstance = numberingXml.search(/<w:num /);
       zip.file('word/numbering.xml', firstInstance === -1
@@ -1821,18 +1926,22 @@
     const exportIssues = document.getElementById('export-issues');
     const exportTemplateRow = document.getElementById('export-template-row');
     const exportRun = document.getElementById('export-run');
-    let frsTemplateBuffer = null;
+    const exportTemplates = {};
+    let exportKind = null;
 
     function renderExportIssues(groups) {
       exportIssues.innerHTML = groups.filter(group => group.items.length).map(group => `<p class="export-heading">${group.title}</p><ul class="export-list ${group.kind}">${group.items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`).join('');
     }
 
     function updateExportReady() {
-      exportRun.disabled = !frsTemplateBuffer;
+      const kind = TEMPLATE_EXPORTS[exportKind];
+      const template = exportTemplates[exportKind];
+      exportRun.disabled = !template;
       exportTemplateRow.hidden = false;
-      exportStatus.textContent = frsTemplateBuffer
-        ? `Sections 1.1 to 2.4 of ${document.getElementById('source-name').textContent} will be placed into the Word template. The rest of the template stays as it is.`
-        : 'Make FRS Document needs the FRS Word template. Choose the template file (.docx) to continue.';
+      document.getElementById('export-template-name').textContent = template?.name ?? 'No file selected';
+      exportStatus.textContent = template
+        ? `Sections ${kind.range} of ${document.getElementById('source-name').textContent} will be placed into the Word template. The rest of the template stays as it is.`
+        : `${kind.label} needs the ${kind.template} Word template. Choose the template file (.docx) to continue.`;
     }
 
     const exportFileName = () => `${document.getElementById('source-name').textContent.replace(/\.(md|markdown)$/i, '')}.docx`;
@@ -1867,16 +1976,18 @@
       }
     }
 
-    function openExportModal() {
+    function openExportModal(name) {
+      const kind = TEMPLATE_EXPORTS[name];
+      exportKind = name;
       sidebar.classList.remove('open');
-      exportTitle.textContent = 'Make FRS Document (.docx)';
+      exportTitle.textContent = `${kind.label} (.docx)`;
       exportModal.hidden = false;
       exportRun.hidden = false;
       exportRun.disabled = true;
       exportTemplateRow.hidden = true;
       renderExportIssues([]);
       if (!currentMarkdown) { exportStatus.textContent = 'Open a Markdown file first, then export it.'; return; }
-      const { errors, warnings } = checkFrsDocument(currentMarkdown);
+      const { errors, warnings } = checkFrsDocument(currentMarkdown, kind);
       renderExportIssues([{ title: 'Cannot export', kind: 'is-error', items: errors }, { title: 'Check before sending', kind: 'is-warning', items: errors.length ? [] : warnings }]);
       if (errors.length) { exportStatus.textContent = 'This document does not follow the FRS content template, so it cannot be placed into the Word template.'; return; }
       updateExportReady();
@@ -1886,15 +1997,17 @@
     document.getElementById('export-template-picker').addEventListener('change', async event => {
       const file = event.target.files[0];
       if (!file) return;
-      document.getElementById('export-template-name').textContent = file.name;
-      frsTemplateBuffer = await file.arrayBuffer();
-      updateExportReady();
+      // each export keeps its own template; clearing the input lets the same file be chosen again for the other one
+      const name = exportKind;
+      event.target.value = '';
+      exportTemplates[name] = { name: file.name, buffer: await file.arrayBuffer() };
+      if (exportKind === name) updateExportReady();
     });
     exportRun.addEventListener('click', async () => {
       exportRun.disabled = true;
       exportStatus.textContent = 'Building the document…';
       try {
-        const { blob, notes } = await buildFrsDocx(frsTemplateBuffer, currentMarkdown);
+        const { blob, notes } = await buildTemplateDocx(exportTemplates[exportKind].buffer, currentMarkdown, TEMPLATE_EXPORTS[exportKind]);
         downloadBlob(blob, exportFileName());
         showExportResult(notes);
       } catch (error) {
@@ -1912,8 +2025,10 @@
     });
     document.getElementById('export-word').addEventListener('click', exportWord);
     document.getElementById('export-word-mobile').addEventListener('click', exportWord);
-    document.getElementById('export-frs').addEventListener('click', openExportModal);
-    document.getElementById('export-frs-mobile').addEventListener('click', openExportModal);
+    ['frs', 'tls'].forEach(name => {
+      document.getElementById(`export-${name}`).addEventListener('click', () => openExportModal(name));
+      document.getElementById(`export-${name}-mobile`).addEventListener('click', () => openExportModal(name));
+    });
     renderTemplateMenus();
 
     let collapsedDetailsBeforePrint = [];

@@ -59,7 +59,7 @@ Nama status yang terlihat user di layar boleh dipakai apa adanya.
 
 | Bagian FRS | Sumber di dokumen internal | Cara menulis |
 |---|---|---|
-| Front matter | *Identitas FRS* | `doc_type` tetap `FRS`. `frs_number` ← Nomor FRS, `title` ← Judul FRS, `created_by` ← `author`. `division` dan `document_version` ikut nilai template. `document_date` ← tanggal konversi. |
+| Front matter | *Identitas FRS* | `doc_type` tetap `FRS`. `frs_number` ← Nomor FRS, `title` ← Judul FRS, `created_by` ← `author`. `division` dan `document_version` ikut nilai template. `document_date` ← tanggal konversi. `title` dan `frs_number` wajib terisi karena program memakainya untuk mengisi judul dan nomor di cover dan header Word; tanggal di Word diisi program dengan tanggal saat export. |
 | Judul `#` | *Identitas FRS* | `# <Nomor FRS> - <Judul FRS>` |
 | 1.1 OBJECTIVES | Paragraf pembuka (bagian solusi), *Gambaran Besar* | Tujuan dari sudut pandang user: apa yang bisa mereka lakukan atau apa yang membaik. Bukan tujuan teknis. |
 | 1.2 BACKGROUND | Paragraf pembuka (bagian masalah), *Temuan* | Kondisi saat ini dan masalahnya. Dari *Temuan*, ambil hanya yang dirasakan user; temuan soal index, timeout, atau struktur kode tidak ikut. |
@@ -92,9 +92,9 @@ Flow yang seluruhnya berjalan tanpa user (scheduler, job) tetap digambarkan jika
 ### Aturan blok 2.1.N
 
 - Satu blok *Halaman N* di *Bahan FRS* menjadi satu blok `#### 2.1.N <Application Name> - <Role>`, dengan urutan yang sama dan nomor berurutan mulai dari `2.1.1`.
-- **Detail Information** diisi dari *Identitas FRS* (Running ID, Application ID, Application Name, Hierarchy ID - Name) dan sama untuk semua blok.
+- **Detail Information**: hanya *Application Name* yang diisi, dari *Identitas FRS*, dan sama untuk semua blok. Baris *Running ID*, *Application ID*, dan *Hierarchy ID - Name* tetap ditulis tetapi nilainya dikosongkan (sel kosong, tanpa `N/A` dan tanpa `{{PERLU DIISI}}`), walaupun nilainya disebut di dokumen sumber: ketiganya diisi manual oleh System Analyst di dokumen Word.
 - **Page Detail** diisi dari tabel halaman tersebut. *New/Existing* ditulis persis `New` atau `Existing`. Baris *Role* dan *Flow terkait* tidak ikut ke tabel ini.
-- **Screen Layout**: salin baris gambar apa adanya, path tidak diubah. Jika gambar belum ada, tulis `{{PERLU DIISI: gambar screen layout <nama halaman>}}`. Jangan membuat gambar atau menggantinya dengan deskripsi teks.
+- **Screen Layout**: heading-nya tetap ditulis, isinya dikosongkan. Screenshot dimasukkan manual oleh System Analyst di dokumen Word, jadi jangan menulis `{{PERLU DIISI}}`, jangan membuat gambar, dan jangan menggantinya dengan deskripsi teks. Hanya jika dokumen sumber sudah memuat baris gambar `![...](...)`, salin baris itu apa adanya tanpa mengubah path.
 - **Fields Detail**: salin tabel *Fields*. *Given / Input* ditulis persis `Given` atau `Input`, *Mandatory* persis `Yes` atau `No`.
 - Periksa *Validasi & Aturan Bisnis* pada flow yang tercantum di *Flow terkait*. Aturan yang menyangkut suatu field tetapi belum tertulis di kolom *Details / Validation* field itu ditambahkan ke sana dalam bahasa user, dan dicantumkan di laporan.
 
@@ -112,6 +112,6 @@ Flow yang seluruhnya berjalan tanpa user (scheduler, job) tetap digambarkan jika
 Tulis singkat, dalam urutan ini:
 
 1. **File yang dihasilkan** — nama file.
-2. **Perlu diisi** — daftar tiap `{{PERLU DIISI: ...}}` beserta section-nya. Tulis "tidak ada" jika kosong.
+2. **Perlu diisi** — daftar tiap `{{PERLU DIISI: ...}}` beserta section-nya. Tulis "tidak ada" jika kosong. Tambahkan satu baris pengingat bahwa Running ID, Application ID, Hierarchy ID - Name, dan screenshot Screen Layout tiap blok `2.1.N` harus diisi manual di Word.
 3. **Yang ditambahkan dari luar *Bahan FRS*** — validasi yang dipindahkan ke *Fields Detail*, istilah yang ditambahkan ke *Terminology*, dan sejenisnya, beserta asal section-nya, supaya System Analyst bisa memeriksanya.
 4. **Yang perlu diputuskan System Analyst** — hal di dokumen sumber yang ambigu atau saling bertentangan dan memengaruhi isi FRS. Sebutkan pilihan yang Anda ambil.

@@ -176,11 +176,11 @@ const templateFiles = [
 ];
 ```
 
-Add an entry to `templateFiles` when a file is added to the folder. The FRS Word template is deliberately not in this list or in the folder; it is supplied by the person exporting.
+Add an entry to `templateFiles` when a file is added to the folder. The FRS and Scoping and Timeline Word templates are deliberately not in this list or in the folder; they are supplied by the person exporting.
 
 ### Word Export
 
-The **Print** menu has three entries: **Print / save as PDF** (the print flow above), **Export Word (.docx)** and **Make FRS Document (.docx)**.
+The **Print** menu has four entries: **Print / save as PDF** (the print flow above), **Export Word (.docx)**, **Make FRS Document (.docx)** and **Make Scoping and Timeline Document (.docx)**.
 
 Export Word turns the document that is currently open into a plain Word file. It works for any Markdown document and uses no template:
 
@@ -197,10 +197,14 @@ Make FRS Document takes the document that is currently open and places it into t
 
 - Sections `1.1 OBJECTIVES` to `2.4 INTERFACE REQUIREMENT` are replaced with the Markdown content.
 - Everything else in the Word template (cover, document information, revision history, reviewer tables, headers, footers, sections 2.5 to 4) is left as it is.
-- Each `2.1.N` block becomes one copy of the template's page table (Detail Information, Page Detail, Screen Layout, Fields Detail), starting on a new page.
-- Markdown tables reuse the look of the template's Scope table.
+- The title placeholder (`<Judul>`, `[Judul]`) on the cover and in the page header is filled from the front matter `title`, or from the document's `#` heading when there is no front matter title. `[num]` on the cover is filled from `frs_number`.
+- The date placeholder (`<DateNow>`, or `xx/xx/xxxx` in the page header) is filled with the date of the export, as `dd/mm/yyyy`.
+- Each `2.1.N` block becomes one copy of the template's page table (Detail Information, Page Detail, Screen Layout, Fields Detail), starting on a new page. The table gets the same indent and total width as the other tables, with its columns scaled to fit.
+- Markdown tables reuse the look of the template's Scope table, placed like the Terminology table: the same indent from the left margin and the same total width.
+- Tables in `1.7 TERMINOLOGY` are the exception: they use the Terminology table of the Scoping and Timeline template (plain borders, indented, bold centred header). The FRS template has no such table, so the viewer carries a copy of that layout; a template that has its own table under `TERMINOLOGY` supplies the layout itself.
 - Mermaid diagrams are rendered with the print theme and embedded as PNG images.
 - Images referenced with `![caption](path)` are embedded when the browser can fetch them.
+- A value left empty in the Markdown stays empty in Word. `template-frs.md` leaves Running ID, Application ID, Hierarchy ID - Name and the Screen Layout of each `2.1.N` block empty on purpose: they are filled in by hand in Word.
 
 The open document must follow `template/template-frs.md`. Before exporting, the dialog lists what blocks the export (a missing numbered heading or `2.1.N` sub-heading) and what to check (placeholders such as `{{...}}` that are still unfilled).
 
@@ -209,6 +213,17 @@ Notes:
 - The table of contents is left exactly as it is in the template, so its page numbers are the template's and must be corrected in Word. Do not use Word's **Update entire table** on it: most headings in the current template are not real Word headings, so a full update drops them from the table.
 - When the page is opened from a `file://` URL, linked images cannot be fetched and are replaced by a marker to insert them manually. This applies to Export Word as well.
 - The export looks up the template's headings and its Scope and `2.1.1` tables by their text, so those must stay in the Word template.
+
+### Make Scoping and Timeline Document
+
+Make Scoping and Timeline Document works the same way as Make FRS Document, with the Scoping and Timeline Word template. Chapter 1 of that template is the same as chapter 1 of the FRS, so the same Markdown document serves both exports. Each export asks for its own template and keeps it for the rest of the session.
+
+- Sections `1.1 OBJECTIVES` to `1.7 TERMINOLOGY` are replaced with the Markdown content, exactly as in Make FRS Document.
+- The title and the date are filled in the same way. `[num]` on the cover is left as it is, because the number in the Markdown is the FRS number, not the number of this document.
+- Everything else in the Word template (cover, document information, revision history, reviewer tables, headers, footers, `2. SCHEDULING` and `3. ADMINISTRATION`) is left as it is, including the section break between chapter 1 and chapter 2.
+- Chapter 2 of the Markdown document is ignored. A document that only has chapter 1 can be exported too: only the numbered headings `1.1` to `1.7` are required, and only placeholders inside those sections are reported.
+
+The notes of Make FRS Document apply here as well. The export looks up the headings `INTRODUCTION` to `TERMINOLOGY` and `SCHEDULING`, and the Scope table, by their text, so those must stay in the Word template.
 
 ### Responsive Design and Accessibility
 
@@ -277,7 +292,7 @@ Dependencies:
 
 - `marked.js` for Markdown parsing.
 - `mermaid.js` for diagram rendering.
-- `JSZip` for reading and writing `.docx` and `.zip` files. It is loaded from jsDelivr the first time **Export Word**, **Make FRS Document** or **Download all** is used.
+- `JSZip` for reading and writing `.docx` and `.zip` files. It is loaded from jsDelivr the first time **Export Word**, **Make FRS Document**, **Make Scoping and Timeline Document** or **Download all** is used.
 
 An internet connection is required for these CDN scripts unless they are replaced with locally hosted copies.
 

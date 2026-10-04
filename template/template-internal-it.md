@@ -434,15 +434,15 @@ Kolom tabel di bawah sengaja sama persis dengan template FRS supaya bisa disalin
 
 ## Identitas FRS
 
+<!-- Nomor FRS dan Judul FRS wajib diisi: keduanya mengisi cover dan header dokumen Word.
+     Running ID, Application ID, dan Hierarchy ID tidak ditulis di sini; diisi manual di Word. -->
+
 | Field | Value |
 |-------|-------|
 | Nomor FRS | {{...}} |
 | Judul FRS | {{...}} |
 | Bahasa FRS | {{Indonesia / English}} |
-| Running ID | {{...}} |
-| Application ID | {{...}} |
 | Application Name | {{...}} |
-| Hierarchy ID - Name | {{Isi jika ada, jika tidak tulis N/A}} |
 
 ## Scope
 
@@ -460,8 +460,8 @@ Kolom tabel di bawah sengaja sama persis dengan template FRS supaya bisa disalin
 
 ## Istilah
 
-| No | Term | Description |
-|----|------|-------------|
+| No | Abbreviation | Description |
+|----|--------------|-------------|
 | 1 | {{Istilah / singkatan}} | {{Kepanjangan dan artinya}} |
 
 ## Halaman & Field
@@ -483,10 +483,9 @@ Kolom tabel di bawah sengaja sama persis dengan template FRS supaya bisa disalin
 
 **Screen Layout**
 
-<!-- Gambar wajib disediakan SA (mockup/screenshot); agent tidak membuat gambar.
-     Contoh: ![Screen Layout - Nama Halaman](images/halaman-1.png) -->
-
-{{Gambar screen layout}}
+<!-- Dibiarkan kosong: screenshot dimasukkan manual oleh SA di dokumen Word. Agent tidak membuat gambar.
+     Hanya jika file gambarnya sudah disediakan SA, boleh ditulis di sini, mis.:
+     ![Screen Layout - Nama Halaman](images/halaman-1.png) -->
 
 **Fields**
 
