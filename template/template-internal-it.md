@@ -231,7 +231,9 @@ Ringkasan tabel mana disentuh flow mana. Detail per langkah ada di tiap *Flow â†
 
 ### Activity Diagram
 
-<!-- Sudut pandang proses: keputusan dan cabang. Operasi DB yang 1 transaksi digambar sebagai 1 node silinder. -->
+<!-- Sudut pandang proses: keputusan dan cabang. Operasi DB yang 1 transaksi digambar sebagai 1 node silinder.
+     Diagram ini teknis dan tetap flowchart Mermaid. Swimlane sesuai standar FRS (lane per aktor, Start/End,
+     Yes/No) dibuat saat konversi ke FRS, dari diagram ini + baris Aktor di tabel atas. -->
 
 ```mermaid
 flowchart TD

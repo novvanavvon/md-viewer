@@ -288,9 +288,17 @@
     .table-pager-btn:disabled { opacity: .4; cursor: default; }
     .diagram-frame { position: relative; min-height: 170px; margin: 22px 0 30px; overflow: auto; background: #0b1a25; border: 1px solid rgba(127, 215, 223, .28); border-radius: 10px; scrollbar-width: none; -ms-overflow-style: none; }
     .diagram-frame::-webkit-scrollbar { display: none; }
-    .mermaid { min-width: 100%; min-height: 170px; padding: 42px 20px 20px; background: #0b1a25; text-align: center; transform-origin: center center; user-select: none; cursor: grab; }
-    .mermaid.is-dragging { cursor: grabbing; }
+    .mermaid, .swimlane { min-width: 100%; min-height: 170px; padding: 42px 20px 20px; background: #0b1a25; text-align: center; transform-origin: center center; user-select: none; cursor: grab; }
+    .mermaid.is-dragging, .swimlane.is-dragging { cursor: grabbing; }
+    @media screen {
+      .swimlane .sl-bg { fill: none; }
+      .swimlane .sl-frame, .swimlane .sl-edge { stroke: #7fd7df; }
+      .swimlane .sl-shape { fill: #142532; stroke: #7fd7df; }
+      .swimlane .sl-arrow { fill: #7fd7df; }
+      .swimlane .sl-text, .swimlane .sl-label { fill: #c8ccce; }
+    }
     .mermaid svg { display: inline-block; max-width: none; height: auto; vertical-align: middle; }
+    .swimlane svg { display: inline-block; max-width: 100%; height: auto; vertical-align: middle; }
     .diagram-controls { position: absolute; z-index: 2; top: 10px; right: 10px; display: flex; gap: 5px; padding: 4px; background: rgba(7, 16, 24, .86); border: 1px solid rgba(127, 215, 223, .22); border-radius: 8px; backdrop-filter: blur(12px); }
     .diagram-controls button { display: grid; place-items: center; width: 30px; height: 28px; padding: 0; color: var(--ink); background: transparent; border: 0; border-radius: 5px; font: 700 16px/1 Arial, sans-serif; }
     .diagram-controls svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
@@ -350,10 +358,10 @@
       #content code { color: #0b3a45; background: #e7eef0; font-weight: 700; }
       #content a { color: #14515f; font-weight: 700; }
       #content pre { overflow: visible !important; white-space: pre-wrap !important; word-break: break-word; font-size: 9px; box-shadow: none; background: #142d38; color: #f4fbfc; border: 1.5px solid #7fd7df; }
-      .diagram-frame, .mermaid { background: #fff; border-color: #aaa; }
+      .diagram-frame, .mermaid, .swimlane { background: #fff; border-color: #aaa; }
       .diagram-controls { display: none; }
       .diagram-frame { border: none !important; border-radius: 0 !important; overflow: visible !important; }
-      .mermaid { padding: 0 !important; }
+      .mermaid, .swimlane { padding: 0 !important; }
       .table-toolbar, .table-pager { display: none !important; }
       .table-row-hidden { display: table-row !important; }
       #content table.table-paginated tr:nth-child(even) td { background: #f2f2f2; }
@@ -665,10 +673,512 @@
       return value.replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
     }
 
+    // ---- swimlane activity diagram: the FRS notation, drawn here because Mermaid has no swimlanes ----
+    const SWIMLANE_FONT = 13;
+    const SWIMLANE_LINE = 16;
+
+    let swimlaneMeasure;
+    function swimlaneTextWidth(text, bold) {
+      swimlaneMeasure ??= document.createElement('canvas').getContext('2d');
+      swimlaneMeasure.font = `${bold ? '700 ' : ''}${SWIMLANE_FONT}px Arial`;
+      return swimlaneMeasure.measureText(text).width;
+    }
+
+    function wrapSwimlaneText(text, maxWidth) {
+      const lines = [];
+      text.split('\n').forEach(part => {
+        let line = '';
+        part.trim().split(/\s+/).forEach(word => {
+          const next = line ? `${line} ${word}` : word;
+          if (line && swimlaneTextWidth(next) > maxWidth) { lines.push(line); line = word; } else line = next;
+        });
+        lines.push(line);
+      });
+      return { lines, width: Math.max(...lines.map(line => swimlaneTextWidth(line))), height: lines.length * SWIMLANE_LINE };
+    }
+
+    // the source is a small Mermaid-like text: "app:" and "process:" lines, "lane" blocks that declare nodes, then flows
+    function parseSwimlane(source) {
+      const errors = [];
+      const model = { app: '', process: '', lanes: [], nodes: [], edges: [] };
+      const ids = new Map();
+      const clean = text => text.trim().replace(/^"(.*)"$/, '$1').replace(/<br\s*\/?>/gi, '\n').trim();
+      const shapes = [['terminator', /^\(\[(.+)\]\)$/], ['io', /^\[\/(.+)\/\]$/], ['process', /^\[(.+)\]$/], ['decision', /^\{(.+)\}$/]];
+      source.split(/\r?\n/).forEach((raw, index) => {
+        const line = raw.trim();
+        const where = `line ${index + 1}`;
+        if (!line || line.startsWith('%%')) return;
+        const header = /^(app|process)\s*:\s*(.*)$/i.exec(line);
+        if (header) { model[header[1].toLowerCase()] = clean(header[2]); return; }
+        const lane = /^lane\s+(.+)$/i.exec(line);
+        if (lane) { model.lanes.push(clean(lane[1])); return; }
+        if (line.includes('-->')) {
+          const parts = line.split(/\s*(--(?!>).*?-->|-->\|[^|]*\||-->)\s*/);
+          const names = parts.filter((_, i) => i % 2 === 0);
+          if (names.some(name => !/^[A-Za-z_]\w*$/.test(name))) { errors.push(`${where}: a flow connects node ids, for example "A --> B" or "A -- Yes --> B".`); return; }
+          parts.filter((_, i) => i % 2 === 1).forEach((arrow, i) => {
+            const label = (/^--\s*(.*?)\s*-->$/.exec(arrow) || /^-->\|(.*)\|$/.exec(arrow) || [])[1] ?? '';
+            model.edges.push({ from: names[i], to: names[i + 1], label: clean(label), where });
+          });
+          return;
+        }
+        const node = /^([A-Za-z_]\w*)\s*(.+)$/.exec(line);
+        const shape = node && shapes.find(([, pattern]) => pattern.test(node[2]));
+        if (!shape) { errors.push(`${where}: "${line}" is not understood.`); return; }
+        if (!model.lanes.length) { errors.push(`${where}: node "${node[1]}" is declared before any "lane".`); return; }
+        if (ids.has(node[1])) { errors.push(`${where}: node id "${node[1]}" is used twice.`); return; }
+        ids.set(node[1], model.nodes.length);
+        model.nodes.push({ id: node[1], kind: shape[0], text: clean(shape[1].exec(node[2])[1]), lane: model.lanes.length - 1 });
+      });
+
+      if (!model.app) errors.push('"app:" (the application title on the left) is missing.');
+      if (!model.process) errors.push('"process:" (the process name above the lanes) is missing.');
+      const { nodes } = model;
+      nodes.filter(node => node.kind === 'terminator').forEach(node => {
+        const word = node.text.toLowerCase();
+        if (word !== 'start' && word !== 'end') errors.push(`"${node.id}": a rounded node reads Start or End, not "${node.text}".`);
+        node.kind = word === 'end' ? 'end' : 'start';
+        node.text = word === 'end' ? 'End' : 'Start';
+      });
+      const edges = model.edges = model.edges.filter(edge => {
+        const unknown = [...new Set([edge.from, edge.to])].filter(id => !ids.has(id));
+        if (unknown.length) errors.push(`${edge.where}: ${unknown.map(id => `"${id}"`).join(' and ')} is not declared in a lane.`);
+        else if (edge.from === edge.to) errors.push(`${edge.where}: "${edge.from}" flows into itself.`);
+        return !unknown.length && edge.from !== edge.to;
+      }).map(edge => ({ from: ids.get(edge.from), to: ids.get(edge.to), label: edge.label }));
+      if (new Set(edges.map(edge => `${edge.from}>${edge.to}`)).size < edges.length) errors.push('Two flows connect the same two nodes in the same direction.');
+
+      const starts = nodes.filter(node => node.kind === 'start').length;
+      if (starts !== 1) errors.push(`The diagram needs exactly one Start (found ${starts}).`);
+      if (!nodes.some(node => node.kind === 'end')) errors.push('The diagram needs at least one End.');
+      nodes.forEach((node, index) => {
+        const out = edges.filter(edge => edge.from === index);
+        const incoming = edges.filter(edge => edge.to === index).length;
+        const name = `"${node.id}"`;
+        if (node.kind === 'decision') {
+          if (out.map(edge => edge.label.toLowerCase()).sort().join() !== 'no,yes') errors.push(`Decision ${name} needs exactly two flows, one labelled Yes and one labelled No.`);
+          else out.forEach(edge => { edge.label = edge.label.toLowerCase() === 'no' ? 'No' : 'Yes'; });
+        } else {
+          if (out.some(edge => edge.label)) errors.push(`${name}: only the two flows that leave a decision carry a label (Yes, No).`);
+          if (node.kind === 'end' && out.length) errors.push(`${name}: no flow leaves End.`);
+          else if (node.kind !== 'end' && out.length > 1) errors.push(`${name} has ${out.length} flows leaving it; only a decision branches.`);
+          else if (node.kind !== 'end' && !out.length) errors.push(`${name} has no flow leaving it; every path ends at End.`);
+        }
+        if (node.kind === 'start' && incoming) errors.push(`${name}: no flow enters Start.`);
+        else if (node.kind !== 'start' && !incoming) errors.push(`${name} has no flow entering it.`);
+      });
+      if (!errors.length) {
+        const reach = (from, step) => {
+          const seen = new Set(from);
+          for (const index of seen) step(index).forEach(next => seen.add(next));
+          return seen;
+        };
+        const fromStart = reach([nodes.findIndex(node => node.kind === 'start')], index => edges.filter(edge => edge.from === index).map(edge => edge.to));
+        const toEnd = reach(nodes.map((node, index) => node.kind === 'end' ? index : -1).filter(index => index >= 0), index => edges.filter(edge => edge.to === index).map(edge => edge.from));
+        nodes.forEach((node, index) => {
+          if (!fromStart.has(index)) errors.push(`"${node.id}" cannot be reached from Start.`);
+          else if (!toEnd.has(index)) errors.push(`"${node.id}" never reaches End.`);
+        });
+      }
+      if (errors.length) throw new Error(errors.join(' '));
+      return model;
+    }
+
+    function sizeSwimlaneNode(node) {
+      if (node.kind === 'start' || node.kind === 'end') return Object.assign(node, { lines: [node.text], w: 92, h: 40, cellW: 92, cellH: 40 });
+      const text = wrapSwimlaneText(node.text, node.kind === 'decision' ? 104 : 150);
+      node.lines = text.lines;
+      if (node.kind === 'decision') {
+        // the diamond is sized so that the text box touches its sides, and its cell keeps room for the Yes / No labels
+        node.w = Math.max(112, Math.ceil(text.width + text.height * 1.2 + 28));
+        node.h = Math.max(64, Math.ceil(text.height / (1 - text.width / node.w) + 14));
+        return Object.assign(node, { cellW: node.w + 64, cellH: node.h + 36 });
+      }
+      node.slant = node.kind === 'io' ? 14 : 0;
+      node.w = Math.max(124, Math.ceil(text.width + 28 + node.slant * 2));
+      node.h = Math.max(46, text.height + 22);
+      return Object.assign(node, { cellW: node.w, cellH: node.h });
+    }
+
+    function swimlaneHeap() {
+      const items = [];
+      const swap = (a, b) => { [items[a], items[b]] = [items[b], items[a]]; };
+      return {
+        get size() { return items.length; },
+        push(cost, value) {
+          let i = items.push([cost, value]) - 1;
+          for (let up = (i - 1) >> 1; i > 0 && items[up][0] > items[i][0]; i = up, up = (i - 1) >> 1) swap(i, up);
+        },
+        pop() {
+          const top = items[0];
+          const last = items.pop();
+          if (!items.length) return top;
+          items[0] = last;
+          for (let i = 0; ;) {
+            const left = 2 * i + 1;
+            let least = i;
+            if (left < items.length && items[left][0] < items[least][0]) least = left;
+            if (left + 1 < items.length && items[left + 1][0] < items[least][0]) least = left + 1;
+            if (least === i) return top;
+            swap(i, least);
+            i = least;
+          }
+        }
+      };
+    }
+
+    // places every node in a lane column and a row, then routes the flows on a grid of tracks between the cells
+    function layoutSwimlane(model, tracks, mirrored) {
+      const { nodes, edges, lanes } = model;
+      nodes.forEach(sizeSwimlaneNode);
+      const out = nodes.map(() => []);
+      const incoming = nodes.map(() => []);
+      edges.forEach(edge => { edge.back = false; out[edge.from].push(edge); incoming[edge.to].push(edge); });
+      out.forEach(list => list.sort((a, b) => (a.label === 'No') - (b.label === 'No')));
+
+      // depth-first from Start, Yes before No: finds the flows that loop back and the order the nodes are met in
+      const state = nodes.map(() => 0);
+      const met = [];
+      const done = [];
+      const visit = index => {
+        state[index] = 1;
+        met.push(index);
+        out[index].forEach(edge => {
+          if (state[edge.to] === 1) edge.back = true;
+          else if (!state[edge.to]) { nodes[edge.to].parent = index; visit(edge.to); }
+        });
+        state[index] = 2;
+        done.push(index);
+      };
+      visit(nodes.findIndex(node => node.kind === 'start'));
+
+      // a row per step; a plain hand-over to another lane stays on the same row when that cell is free
+      edges.forEach(edge => {
+        edge.step = !edge.back && nodes[edge.from].lane !== nodes[edge.to].lane && out[edge.from].length === 1 && incoming[edge.to].length === 1 && incoming[edge.from].length <= 1 ? 0 : 1;
+      });
+      for (;;) {
+        [...done].reverse().forEach(index => { nodes[index].row = Math.max(0, ...incoming[index].filter(edge => !edge.back).map(edge => nodes[edge.from].row + edge.step)); });
+        const clash = edges.find(edge => !edge.step && !edge.back && nodes.some((node, index) => index !== edge.to && node.lane === nodes[edge.to].lane && node.row === nodes[edge.to].row));
+        if (!clash) break;
+        clash.step = 1;
+      }
+
+      // a node stays in the column of the node it follows; a second node on the same row of a lane opens a column beside it
+      const taken = new Set();
+      [...met].sort((a, b) => nodes[a].row - nodes[b].row).forEach(index => {
+        const node = nodes[index];
+        const parent = nodes[node.parent];
+        const wanted = parent && parent.lane === node.lane ? parent.sub : 0;
+        for (let offset = 0; ; offset++) {
+          const sub = [wanted + offset, wanted - offset].find(value => value >= 0 && !taken.has(`${node.lane}:${node.row}:${value}`));
+          if (sub === undefined) continue;
+          node.sub = sub;
+          taken.add(`${node.lane}:${node.row}:${sub}`);
+          break;
+        }
+      });
+      const colLane = [];
+      const laneCols = lanes.map((_, lane) => 1 + Math.max(0, ...nodes.filter(node => node.lane === lane).map(node => node.sub)));
+      const laneStart = laneCols.map((count, lane) => {
+        for (let i = 0; i < count; i++) colLane.push(lane);
+        return colLane.length - count;
+      });
+      // the extra columns of a lane open to the right, or to the left when the lane is mirrored
+      nodes.forEach(node => { node.col = laneStart[node.lane] + (mirrored.has(node.lane) ? laneCols[node.lane] - 1 - node.sub : node.sub); });
+      const C = colLane.length;
+      const R = 1 + Math.max(...nodes.map(node => node.row));
+      const colW = colLane.map(() => 124);
+      const rowH = Array(R).fill(40);
+      nodes.forEach(node => { colW[node.col] = Math.max(colW[node.col], node.cellW); rowH[node.row] = Math.max(rowH[node.row], node.cellH); });
+
+      // grid lines: K tracks in every gap, then the centre line of the column or row that follows
+      const K = tracks;
+      const NX = C * (K + 1) + K;
+      const NY = R * (K + 1) + K;
+      const line = index => K + index * (K + 1);
+      const isTrack = index => index % (K + 1) < K;
+      const roughLines = (sizes, gap) => {
+        const at = [];
+        let cursor = 0;
+        for (let i = 0; i <= sizes.length; i++) {
+          for (let t = 0; t < K; t++) at.push(cursor + (t + 1) * gap / (K + 1));
+          cursor += gap;
+          if (i < sizes.length) { at.push(cursor + sizes[i] / 2); cursor += sizes[i]; }
+        }
+        return at;
+      };
+      const roughX = roughLines(colW, 48);
+      const roughY = roughLines(rowH, 44);
+      const DX = [1, 0, -1, 0];
+      const DY = [0, 1, 0, -1];
+      const nodeAt = new Int16Array(NX * NY).fill(-1);
+      // per routing pass: who holds each grid segment, which node the flow through a point runs to, and the running totals
+      let hUse, vUse, trunk, pendingOut, total, crossed;
+      nodes.forEach((node, index) => { nodeAt[line(node.col) + line(node.row) * NX] = index; });
+      const inside = (x, y) => x >= 0 && y >= 0 && x < NX && y < NY;
+      // the edge that holds the grid segment leaving (x, y) in direction d, or -1; -2 outside the grid
+      const segment = (x, y, d) => !inside(x + DX[d], y + DY[d]) ? -2 : d === 0 ? hUse[x + y * NX] : d === 2 ? hUse[x - 1 + y * NX] : d === 1 ? vUse[x + y * NX] : vUse[x + (y - 1) * NX];
+      const hold = (x, y, d, id) => { if (d === 0) hUse[x + y * NX] = id; else if (d === 2) hUse[x - 1 + y * NX] = id; else if (d === 1) vUse[x + y * NX] = id; else vUse[x + (y - 1) * NX] = id; };
+
+      const BEND = 55;
+      const CROSS = 240;
+      const JOIN = 130;
+      const leaveCost = (node, edge, d) => node.kind !== 'decision' ? [12, 0, 12, 50][d] : edge.label === 'Yes' ? [14, 0, 14, 70][d] : [0, 14, 0, 14][d];
+      // a decision is entered from the top where possible, which keeps its sides free for Yes and No
+      const enterCost = (node, d) => [node.kind === 'decision' ? 16 : 8, 0, node.kind === 'decision' ? 16 : 8, 60][d];
+
+      function route(edge, id) {
+        const from = nodes[edge.from];
+        const to = nodes[edge.to];
+        const sx = line(from.col), sy = line(from.row), tx = line(to.col), ty = line(to.row);
+        // a side of the target is kept free for each flow that still has to leave it; further flows join one that already enters
+        const direct = [0, 1, 2, 3].filter(d => segment(tx, ty, d) === -1).length > pendingOut[edge.to];
+        const END = NX * NY * 4;
+        const cost = new Float64Array(END + 1).fill(Infinity);
+        const prev = new Int32Array(END + 1).fill(-1);
+        const heap = swimlaneHeap();
+        const relax = (key, value, before) => { if (value < cost[key]) { cost[key] = value; prev[key] = before; heap.push(value, key); } };
+        const move = (x, y, d, base, before, turned) => {
+          if (segment(x, y, d) !== -1) return;
+          const nx = x + DX[d], ny = y + DY[d];
+          const there = nodeAt[nx + ny * NX];
+          if (there >= 0 && (there !== edge.to || !direct)) return;
+          let value = base + Math.abs(roughX[nx] - roughX[x]) + Math.abs(roughY[ny] - roughY[y]);
+          if (there >= 0) value += enterCost(to, d);
+          // a flow that turns into a gap takes a middle track, which leaves room on both sides for the flows routed later
+          if (turned) value += BEND + (isTrack(d % 2 ? x : y) ? Math.abs((d % 2 ? x : y) % (K + 1) - (K - 1) / 2) * 1.5 : 0);
+          // beside a lane line, a flow keeps to the side of a lane it belongs to
+          if (turned && d % 2 && isTrack(x)) {
+            const gap = Math.floor(x / (K + 1));
+            const lane = colLane[x % (K + 1) < K / 2 ? gap - 1 : gap];
+            if (gap > 0 && gap < C && colLane[gap - 1] !== colLane[gap] && lane !== from.lane && lane !== to.lane) value += 30;
+          }
+          relax((nx + ny * NX) * 4 + d, value, before);
+        };
+        for (let d = 0; d < 4; d++) move(sx, sy, d, leaveCost(from, edge, d), -1, false);
+        let end = -1;
+        while (heap.size) {
+          const [value, key] = heap.pop();
+          if (value > cost[key]) continue;
+          if (key === END) { end = prev[key]; break; }
+          const d = key % 4, point = (key - d) / 4, x = point % NX, y = (point - x) / NX;
+          if (x === tx && y === ty) { end = key; break; }
+          const ahead = segment(x, y, d), left = segment(x, y, (d + 3) % 4), right = segment(x, y, (d + 1) % 4);
+          // where one flow already runs to the target and nothing else passes, this flow may end on it
+          if (trunk[point] === edge.to && [ahead, left, right].filter(use => use >= 0).length === 2) relax(END, value + JOIN, key);
+          if (left < 0 && right < 0) {
+            move(x, y, d, value, key, false);
+            if (ahead === -1 || ahead === -2) { move(x, y, (d + 3) % 4, value, key, true); move(x, y, (d + 1) % 4, value, key, true); }
+          } else if (left >= 0 && left === right) move(x, y, d, value + CROSS, key, false);
+        }
+        if (end < 0) return null;
+        total += cost[end];
+        const points = [];
+        for (let key = end; key >= 0; key = prev[key]) points.push([((key - key % 4) / 4) % NX, Math.floor((key - key % 4) / 4 / NX), key % 4]);
+        points.reverse();
+        points.forEach(([px, py, d], i) => {
+          const across = segment(px, py, (d + 1) % 4);
+          if (i < points.length - 1 && points[i + 1][2] === d && across >= 0) crossed.push([id, across]);
+        });
+        let x = sx, y = sy;
+        points.forEach(([px, py, d]) => { hold(x, y, d, id); x = px; y = py; });
+        const joined = x !== tx || y !== ty;
+        points.forEach(([px, py], i) => { if (joined || i < points.length - 1) trunk[px + py * NX] = edge.to; });
+        pendingOut[edge.from]--;
+        return { edge, joined, grid: [[sx, sy], ...points.map(([px, py]) => [px, py])] };
+      }
+
+      // short forward flows first, so that they get the straight lines; flows that loop back go around what is already there
+      let order = edges.map((edge, index) => index).sort((a, b) => {
+        const weight = index => (edges[index].back ? 1000 : 0) + Math.abs(nodes[edges[index].from].col - nodes[edges[index].to].col) + Math.abs(nodes[edges[index].from].row - nodes[edges[index].to].row);
+        return weight(a) - weight(b) || a - b;
+      });
+      const routeAll = sequence => {
+        hUse = new Int16Array(NX * NY).fill(-1);
+        vUse = new Int16Array(NX * NY).fill(-1);
+        trunk = new Int16Array(NX * NY).fill(-1);
+        pendingOut = out.map(list => list.length);
+        total = 0;
+        crossed = [];
+        const routes = [];
+        for (const index of sequence) {
+          const path = route(edges[index], index);
+          if (!path) return null;
+          routes.push(path);
+        }
+        return { routes, total, crossed, hUse, vUse };
+      };
+      let best = routeAll(order);
+      if (!best) return null;
+      // the order decides who gets the straight line: swap two flows that cross, or the two flows of a decision, and keep what is cleaner
+      for (let budget = 48, improved = true; improved && budget > 0;) {
+        improved = false;
+        const swaps = [...best.crossed, ...out.filter(list => list.length === 2).map(list => list.map(edge => edges.indexOf(edge)))];
+        for (const [a, b] of swaps) {
+          if (budget-- <= 0) break;
+          const sequence = order.map(index => index === a ? b : index === b ? a : index);
+          const other = routeAll(sequence);
+          if (!other || other.total > best.total - 1) continue;
+          best = other;
+          order = sequence;
+          improved = true;
+          break;
+        }
+      }
+      ({ hUse, vUse, total } = best);
+      const { routes } = best;
+
+      // real coordinates: a gap is only as wide as the tracks that are used in it
+      const PAD = 18, SPACING = 14, BAND = 34, PROCESS = 34, HEAD = 34;
+      const usedX = Array.from({ length: NX }, (_, x) => vUse.some((id, i) => id >= 0 && i % NX === x));
+      const usedY = Array.from({ length: NY }, (_, y) => hUse.subarray(y * NX, (y + 1) * NX).some(id => id >= 0));
+      const X = new Float64Array(NX), Y = new Float64Array(NY);
+      const spread = (at, base, used, cursor, least) => {
+        const list = [...Array(K).keys()].filter(t => used[base + t]);
+        const need = list.length ? 2 * PAD + (list.length - 1) * SPACING : 0;
+        const width = Math.max(least, need);
+        list.forEach((t, i) => { at[base + t] = cursor + (width - need) / 2 + PAD + i * SPACING; });
+        return cursor + width;
+      };
+      const laneNeed = lanes.map(name => swimlaneTextWidth(name, true) + 28);
+      let bounds, width;
+      for (let pass = 0; pass < 3; pass++) {
+        let cursor = BAND;
+        bounds = [BAND];
+        for (let gap = 0; gap <= C; gap++) {
+          const base = gap * (K + 1);
+          if (gap > 0 && gap < C && colLane[gap - 1] !== colLane[gap]) {
+            // between two lanes the tracks stay clear of the lane line: the lower half on its left, the rest on its right
+            const side = lower => [...Array(K).keys()].filter(t => usedX[base + t] && (t < K / 2) === lower);
+            const before = side(true), after = side(false);
+            before.forEach((t, i) => { X[base + t] = cursor + PAD + i * SPACING; });
+            cursor += before.length ? PAD + (before.length - 1) * SPACING + 14 : 16;
+            bounds.push(cursor);
+            cursor += after.length ? 14 : 16;
+            after.forEach((t, i) => { X[base + t] = cursor + i * SPACING; });
+            cursor += after.length ? (after.length - 1) * SPACING + PAD : 0;
+          } else cursor = spread(X, base, usedX, cursor, gap === 0 || gap === C ? 22 : 28);
+          if (gap < C) { X[base + K] = cursor + colW[gap] / 2; cursor += colW[gap]; }
+        }
+        bounds.push(cursor);
+        width = cursor;
+        // widen the columns when a lane name or the process name does not fit
+        let grown = false;
+        lanes.forEach((_, lane) => {
+          const short = laneNeed[lane] - (bounds[lane + 1] - bounds[lane]);
+          const cols = colLane.map((owner, col) => owner === lane ? col : -1).filter(col => col >= 0);
+          if (short > 0.5) { cols.forEach(col => { colW[col] += short / cols.length; }); grown = true; }
+        });
+        const short = swimlaneTextWidth(model.process, true) + 28 - (width - BAND);
+        if (!grown && short > 0.5) { colW.forEach((_, col) => { colW[col] += short / C; }); grown = true; }
+        if (!grown) break;
+      }
+      let cursor = PROCESS + HEAD;
+      for (let gap = 0; gap <= R; gap++) {
+        cursor = spread(Y, gap * (K + 1), usedY, cursor, gap === 0 || gap === R ? 24 : 38);
+        if (gap < R) { Y[gap * (K + 1) + K] = cursor + rowH[gap] / 2; cursor += rowH[gap]; }
+      }
+      const height = Math.max(cursor, swimlaneTextWidth(model.app, true) + 28);
+      nodes.forEach(node => { node.x = X[line(node.col)]; node.y = Y[line(node.row)]; });
+
+      const reach = (node, dx) => dx ? (node.w - (node.slant || 0)) / 2 : node.h / 2;
+      routes.forEach(path => {
+        const corners = path.grid.filter(([x, y], i, grid) => i === 0 || i === grid.length - 1 || (grid[i - 1][0] === x) !== (grid[i + 1][0] === x));
+        const points = corners.map(([x, y]) => [X[x], Y[y]]);
+        const trim = (node, at, toward) => {
+          const dx = Math.sign(toward[0] - at[0]), dy = Math.sign(toward[1] - at[1]);
+          const distance = reach(node, dx);
+          at[0] += dx * distance;
+          at[1] += dy * distance;
+        };
+        trim(nodes[path.edge.from], points[0], points[1]);
+        path.label = path.edge.label;
+        if (!path.joined) trim(nodes[path.edge.to], points[points.length - 1], points[points.length - 2]);
+        path.points = points;
+      });
+      return { nodes: nodes.map(node => ({ ...node })), routes, lanes, laneCols, bounds, width, height, total, BAND, PROCESS, HEAD };
+    }
+
+    function renderSwimlane(source) {
+      const model = parseSwimlane(source);
+      const attempt = mirrored => {
+        for (let tracks = 9; tracks <= 33; tracks += 8) {
+          const result = layoutSwimlane(model, tracks, new Set(mirrored));
+          if (result) return result;
+        }
+        return null;
+      };
+      // lanes with more than one column are also tried mirrored; the arrangement with the shortest, straightest flows is kept
+      let layout = attempt([]);
+      const wide = (layout?.laneCols ?? []).map((count, lane) => count > 1 ? lane : -1).filter(lane => lane >= 0);
+      [...wide.map(lane => [lane]), ...(wide.length > 1 ? [wide] : [])].forEach(mirrored => {
+        const other = attempt(mirrored);
+        if (other && other.total < layout.total - 1) layout = other;
+      });
+      if (!layout) throw new Error('The flows could not be laid out without overlapping. Split the process into smaller diagrams.');
+      const { nodes, routes, lanes, bounds, width, height, BAND, PROCESS, HEAD } = layout;
+      const n = value => Math.round(value * 10) / 10;
+      const text = (lines, x, y, { bold = false, rotate = false, anchor = 'middle', size = SWIMLANE_FONT, cls = 'sl-text' } = {}) => {
+        const first = y - (lines.length - 1) * SWIMLANE_LINE / 2 + size * 0.36;
+        const spans = lines.map((line, i) => `<tspan x="${rotate ? 0 : n(x)}" y="${n(rotate ? size * 0.36 : first + i * SWIMLANE_LINE)}">${escapeHtml(line)}</tspan>`).join('');
+        return `<text class="${cls}" font-family="Arial, sans-serif" font-size="${size}"${bold ? ' font-weight="700"' : ''} text-anchor="${anchor}" fill="#000"${rotate ? ` transform="translate(${n(x)} ${n(y)}) rotate(-90)"` : ''}>${spans}</text>`;
+      };
+      const rule = (x1, y1, x2, y2) => `<line class="sl-frame" x1="${n(x1)}" y1="${n(y1)}" x2="${n(x2)}" y2="${n(y2)}" stroke="#000" stroke-width="1.4"/>`;
+      let svg = `<rect class="sl-bg" width="${n(width)}" height="${n(height)}" fill="#fff"/>`;
+      svg += `<rect class="sl-frame" x="0.7" y="0.7" width="${n(width - 1.4)}" height="${n(height - 1.4)}" fill="none" stroke="#000" stroke-width="1.4"/>`;
+      svg += rule(BAND, 0, BAND, height) + rule(BAND, PROCESS, width, PROCESS) + rule(BAND, PROCESS + HEAD, width, PROCESS + HEAD);
+      svg += text([model.app], BAND / 2, height / 2, { bold: true, rotate: true }) + text([model.process], (BAND + width) / 2, PROCESS / 2, { bold: true });
+      lanes.forEach((name, lane) => {
+        if (lane) svg += rule(bounds[lane], PROCESS, bounds[lane], height);
+        svg += text([name], (bounds[lane] + bounds[lane + 1]) / 2, PROCESS + HEAD / 2, { bold: true });
+      });
+
+      // a horizontal run hops over the vertical runs of other flows that it crosses
+      const uprights = routes.flatMap((path, id) => path.points.slice(1).map((point, i) => ({ id, a: path.points[i], b: point })).filter(({ a, b }) => a[0] === b[0]));
+      routes.forEach((path, id) => {
+        const { points, label, joined } = path;
+        let d = `M${n(points[0][0])} ${n(points[0][1])}`;
+        points.slice(1).forEach((point, i) => {
+          const from = points[i];
+          if (from[1] === point[1]) {
+            const way = Math.sign(point[0] - from[0]);
+            uprights.filter(({ id: other, a, b }) => other !== id && (a[0] - from[0]) * way > 6 && (point[0] - a[0]) * way > 6 && Math.min(a[1], b[1]) < from[1] - 1 && Math.max(a[1], b[1]) > from[1] + 1)
+              .sort((p, q) => (p.a[0] - q.a[0]) * way)
+              .forEach(({ a }) => { d += ` L${n(a[0] - way * 5)} ${n(from[1])} A5 5 0 0 ${way > 0 ? 1 : 0} ${n(a[0] + way * 5)} ${n(from[1])}`; });
+          }
+          d += ` L${n(point[0])} ${n(point[1])}`;
+        });
+        svg += `<path class="sl-edge" d="${d}" fill="none" stroke="#000" stroke-width="1.4" stroke-linejoin="round"/>`;
+        const tip = points[points.length - 1], before = points[points.length - 2];
+        const ux = Math.sign(tip[0] - before[0]), uy = Math.sign(tip[1] - before[1]);
+        if (joined) svg += `<circle class="sl-arrow" cx="${n(tip[0])}" cy="${n(tip[1])}" r="3.2" fill="#000"/>`;
+        else svg += `<polygon class="sl-arrow" points="${n(tip[0])},${n(tip[1])} ${n(tip[0] - ux * 10 - uy * 4.5)},${n(tip[1] - uy * 10 - ux * 4.5)} ${n(tip[0] - ux * 10 + uy * 4.5)},${n(tip[1] - uy * 10 + ux * 4.5)}" fill="#000"/>`;
+        if (label) {
+          const [x, y] = points[0];
+          const dx = Math.sign(points[1][0] - x), dy = Math.sign(points[1][1] - y);
+          svg += dx ? text([label], x + dx * 6, y - 9, { anchor: dx > 0 ? 'start' : 'end', size: 12, cls: 'sl-label' }) : text([label], x + 7, y + dy * 11, { anchor: 'start', size: 12, cls: 'sl-label' });
+        }
+      });
+
+      nodes.forEach(node => {
+        const { x, y, w, h } = node;
+        const shape = 'class="sl-shape" fill="#fff" stroke="#000" stroke-width="1.4" stroke-linejoin="round"';
+        if (node.kind === 'start' || node.kind === 'end') svg += `<rect ${shape} x="${n(x - w / 2)}" y="${n(y - h / 2)}" width="${w}" height="${h}" rx="${h / 2}"/>`;
+        else if (node.kind === 'decision') svg += `<polygon ${shape} points="${n(x)},${n(y - h / 2)} ${n(x + w / 2)},${n(y)} ${n(x)},${n(y + h / 2)} ${n(x - w / 2)},${n(y)}"/>`;
+        else if (node.kind === 'io') svg += `<polygon ${shape} points="${n(x - w / 2 + node.slant)},${n(y - h / 2)} ${n(x + w / 2)},${n(y - h / 2)} ${n(x + w / 2 - node.slant)},${n(y + h / 2)} ${n(x - w / 2)},${n(y + h / 2)}"/>`;
+        else svg += `<rect ${shape} x="${n(x - w / 2)}" y="${n(y - h / 2)}" width="${w}" height="${h}"/>`;
+        svg += text(node.lines, x, y);
+      });
+      const w = Math.ceil(width), h = Math.ceil(height);
+      return { svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeHtml(`${model.app} - ${model.process}`)}">${svg}</svg>`, width: w, height: h };
+    }
+
     function markdownRenderer() {
       const renderer = new marked.Renderer();
       renderer.code = ({ text, lang }) => {
-        if (lang === 'mermaid') return `<div class="diagram-frame"><div class="diagram-controls" aria-label="Diagram controls"><button type="button" data-diagram-action="zoom-out" aria-label="Zoom out" title="Zoom out">−</button><button type="button" data-diagram-action="reset" aria-label="Reset diagram view" title="Reset view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.34-5.66L4 8.68"></path><path d="M4 4v4.68h4.68"></path></svg></button><button type="button" data-diagram-action="zoom-in" aria-label="Zoom in" title="Zoom in">+</button></div><div class="mermaid" data-mermaid-src="${encodeURIComponent(text)}">${escapeHtml(text)}</div></div>`;
+        const frame = diagram => `<div class="diagram-frame"><div class="diagram-controls" aria-label="Diagram controls"><button type="button" data-diagram-action="zoom-out" aria-label="Zoom out" title="Zoom out">−</button><button type="button" data-diagram-action="reset" aria-label="Reset diagram view" title="Reset view"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.34-5.66L4 8.68"></path><path d="M4 4v4.68h4.68"></path></svg></button><button type="button" data-diagram-action="zoom-in" aria-label="Zoom in" title="Zoom in">+</button></div>${diagram}</div>`;
+        if (lang === 'mermaid') return frame(`<div class="mermaid" data-mermaid-src="${encodeURIComponent(text)}">${escapeHtml(text)}</div>`);
+        if (lang === 'swimlane') return frame(`<div class="swimlane" data-swimlane-src="${encodeURIComponent(text)}"></div>`);
         return `<pre><code>${escapeHtml(text)}</code></pre>`;
       };
       return renderer;
@@ -957,6 +1467,22 @@
         content.querySelectorAll('table').forEach(paginateTable);
         buildToc();
         buildFilterTree();
+        const showDiagramSource = (diagram, src, message, fallback) => {
+          const frame = diagram.closest('.diagram-frame') ?? diagram;
+          renderErrors.push(`"${nearestHeadingLabel(frame) ?? fallback}" failed to render (${message}). The raw source is shown in its place — fix the syntax in the source .md file.`);
+          const pre = document.createElement('pre');
+          pre.className = 'diagram-error';
+          pre.textContent = src;
+          frame.replaceWith(pre);
+        };
+        content.querySelectorAll('.swimlane').forEach(diagram => {
+          const src = decodeURIComponent(diagram.getAttribute('data-swimlane-src'));
+          try {
+            diagram.innerHTML = renderSwimlane(src).svg;
+          } catch (err) {
+            showDiagramSource(diagram, src, String(err?.message ?? err).replace(/\.$/, ''), 'swimlane diagram');
+          }
+        });
         if (window.mermaid) {
           mermaid.initialize({ startOnLoad: false, theme: 'base', themeVariables: screenDiagramTheme });
           const diagrams = [...content.querySelectorAll('.mermaid')];
@@ -969,14 +1495,7 @@
               await mermaid.parse(src);
               validDiagrams.push(diagram);
             } catch (err) {
-              const frame = diagram.closest('.diagram-frame') ?? diagram;
-              const message = err?.message?.split('\n')[0] ?? String(err);
-              const label = nearestHeadingLabel(frame) ?? `diagram #${diagramIndex}`;
-              renderErrors.push(`"${label}" failed to render (${message}). The raw source is shown in its place — fix the syntax in the source .md file.`);
-              const pre = document.createElement('pre');
-              pre.className = 'diagram-error';
-              pre.textContent = src;
-              frame.replaceWith(pre);
+              showDiagramSource(diagram, src, err?.message?.split('\n')[0] ?? String(err), `diagram #${diagramIndex}`);
             }
           }
           if (validDiagrams.length) await mermaid.run({ nodes: validDiagrams });
@@ -992,7 +1511,7 @@
 
     function setupDiagramControls() {
       document.querySelectorAll('.diagram-frame').forEach(frame => {
-        const diagram = frame.querySelector('.mermaid');
+        const diagram = frame.querySelector('.mermaid, .swimlane');
         const state = { scale: 1, x: 0, y: 0, dragging: false, startX: 0, startY: 0 };
         const renderTransform = () => { diagram.style.transform = `translate(${state.x}px, ${state.y}px) scale(${state.scale})`; };
         const reset = () => { state.scale = 1; state.x = 0; state.y = 0; renderTransform(); };
@@ -1085,7 +1604,7 @@
 
     function highlightMatches(root, query) {
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
-        acceptNode: node => (node.parentElement && node.parentElement.closest('script, style, mark.search-hit'))
+        acceptNode: node => (node.parentElement && node.parentElement.closest('script, style, mark.search-hit, .swimlane'))
           ? NodeFilter.FILTER_REJECT
           : NodeFilter.FILTER_ACCEPT
       });
@@ -1380,6 +1899,16 @@
         if (absent.length) errors.push(`${block.number} is missing the sub-heading: ${absent.join(', ')}.`);
       });
       if (kind.pages && !blocks.length && !missing.length) warnings.push('No 2.1.N page block was found, so section 2.1 will only contain the summary.');
+      // the FRS standard draws the workflow as a swimlane
+      const workflow = (sections['1.4'] ?? []).filter(token => token.type === 'code');
+      if (workflow.some(token => token.lang === 'mermaid')) warnings.push('1.4 WORKFLOW has a Mermaid diagram. The FRS standard asks for a swimlane block, as in template-frs.md.');
+      workflow.filter(token => token.lang === 'swimlane').forEach(token => {
+        try {
+          parseSwimlane(token.text);
+        } catch (error) {
+          warnings.push(`A swimlane in 1.4 WORKFLOW does not follow the notation and will be left out of the document. ${error.message}`);
+        }
+      });
       // an export that leaves chapter 2 out only reports the placeholders of the sections it does take
       const exported = kind.pages ? markdown : kind.sections.flatMap(section => sections[section.key] ?? []).map(token => token.raw).join('\n');
       const placeholders = [...new Set(exported.replace(/<!--[\s\S]*?-->/g, '').match(/\{\{[^}]*\}\}/g) || [])];
@@ -1480,6 +2009,19 @@
       return new Promise((resolve, reject) => canvas.toBlob(blob => blob ? resolve(blob.arrayBuffer()) : reject(new Error('the image could not be converted')), 'image/png'));
     }
 
+    async function svgImage(svg, width, height) {
+      const image = await loadImage(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
+      // double resolution for print, capped so a very wide diagram does not become a huge image
+      return { bytes: await rasterize(image, width, height, Math.min(2, 2600 / width)), extension: 'png', width, height };
+    }
+
+    // the swimlane is drawn in black on white whatever the screen theme, so it needs no print theme
+    async function swimlaneImage(source, ctx) {
+      ctx.diagramCount++;
+      const { svg, width, height } = renderSwimlane(source);
+      return svgImage(svg, width, height);
+    }
+
     async function mermaidImage(source, ctx) {
       const id = `frs-export-diagram-${++ctx.diagramCount}`;
       try {
@@ -1492,9 +2034,7 @@
         root.setAttribute('width', width);
         root.setAttribute('height', height);
         root.removeAttribute('style');
-        const image = await loadImage(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(new XMLSerializer().serializeToString(root))}`);
-        // double resolution for print, capped so a very wide diagram does not become a huge image
-        return { bytes: await rasterize(image, width, height, Math.min(2, 2600 / width)), extension: 'png', width, height };
+        return await svgImage(new XMLSerializer().serializeToString(root), width, height);
       } finally {
         document.getElementById(`d${id}`)?.remove();
       }
@@ -1679,6 +2219,7 @@
         else if (token.type === 'list') xml += await listXml(token, style, ctx, 0);
         else if (token.type === 'table') xml += tableXml(token, ctx);
         else if (token.type === 'blockquote') xml += await blocksXml(token.tokens, { ...style, left: style.left + 360 }, ctx);
+        else if (token.type === 'code' && token.lang === 'swimlane') xml += await imageParagraphXml(() => swimlaneImage(token.text, ctx), `Diagram ${ctx.diagramCount + 1}`, style, ctx);
         else if (token.type === 'code' && token.lang === 'mermaid') xml += await imageParagraphXml(() => mermaidImage(token.text, ctx), `Diagram ${ctx.diagramCount + 1}`, style, ctx);
         else if (token.type === 'code') xml += token.text.split('\n').map(line => paragraphXml(runXml(line, { name: 'Consolas', size: '18' }), { ...style, after: '0', jc: '', shade: ctx.codeShade })).join('') + (ctx.codeShade ? DOCX_SPACER : '');
       }

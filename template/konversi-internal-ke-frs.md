@@ -53,7 +53,7 @@ Nama status yang terlihat user di layar boleh dipakai apa adanya.
 
 **Bahasa isi** mengikuti baris *Bahasa FRS* di *Identitas FRS*. Heading dan nama kolom tabel tetap dalam bahasa Inggris seperti di template, apa pun bahasa isinya.
 
-**Elemen yang boleh dipakai** hanya paragraf, bullet/numbered list, tabel, blok `mermaid`, dan gambar `![caption](path)`. Tanpa HTML mentah, tanpa tabel di dalam tabel, tanpa heading tambahan. Komentar HTML petunjuk dari `template-frs.md` tidak perlu disalin ke keluaran.
+**Elemen yang boleh dipakai** hanya paragraf, bullet/numbered list, tabel, blok `swimlane` (hanya di 1.4 WORKFLOW), dan gambar `![caption](path)`. Tanpa HTML mentah, tanpa tabel di dalam tabel, tanpa heading tambahan. Komentar HTML petunjuk dari `template-frs.md` tidak perlu disalin ke keluaran.
 
 ## Pemetaan
 
@@ -64,7 +64,7 @@ Nama status yang terlihat user di layar boleh dipakai apa adanya.
 | 1.1 OBJECTIVES | Paragraf pembuka (bagian solusi), *Gambaran Besar* | Tujuan dari sudut pandang user: apa yang bisa mereka lakukan atau apa yang membaik. Bukan tujuan teknis. |
 | 1.2 BACKGROUND | Paragraf pembuka (bagian masalah), *Temuan* | Kondisi saat ini dan masalahnya. Dari *Temuan*, ambil hanya yang dirasakan user; temuan soal index, timeout, atau struktur kode tidak ikut. |
 | 1.3 SCOPE | *Bahan FRS → Scope*, *Rekomendasi (Belum Masuk Scope)* | Paragraf dan tabel disalin. Baris *Tidak termasuk* dan butir rekomendasi yang belum masuk scope ditulis sebagai kalimat di paragraf. |
-| 1.4 WORKFLOW | *Activity Diagram* tiap flow | Lihat *Aturan Workflow* di bawah. |
+| 1.4 WORKFLOW | *Activity Diagram* tiap flow, *Aktor & Hak Akses*, *Identitas FRS* | Digambar ulang sebagai swimlane. Lihat *Aturan Workflow* di bawah. |
 | 1.5 ASSUMPTIONS | *Bahan FRS → Asumsi* | Disalin sebagai numbered list. |
 | 1.6 USER | *Aktor & Hak Akses* | Satu baris per role. Kolom *Boleh* dan *Tidak boleh* dirangkum menjadi satu deskripsi dalam bahasa user. Aktor non-manusia (scheduler, job) tidak ditulis sebagai user. |
 | 1.7 TERMINOLOGY | *Bahan FRS → Istilah* | Disalin. Tambahkan istilah lain hanya jika istilah itu Anda pakai di FRS dan artinya tertulis di dokumen sumber. |
@@ -78,16 +78,66 @@ Bagian berikut tidak ikut ke FRS dalam bentuk apa pun: *Keputusan Desain & Alasa
 
 ### Aturan Workflow
 
-Workflow di FRS adalah alur bisnis: siapa melakukan apa, dan apa tanggapan sistem.
+Workflow di FRS adalah alur bisnis: siapa melakukan apa, dan apa tanggapan sistem. Standar FRS menetapkan bentuknya: activity diagram berupa swimlane. *Activity Diagram* di dokumen sumber adalah `flowchart` Mermaid yang teknis, jadi diagramnya tidak disalin tetapi digambar ulang dengan blok `swimlane`. Program yang menggambar blok ini mengatur sendiri posisi node dan garis supaya tidak saling menimpa; yang Anda tulis hanya isi dan urutannya.
 
-- Satu diagram `flowchart TD` per flow yang melibatkan user. Jika beberapa flow membentuk satu proses bisnis yang berurutan, gabungkan menjadi satu diagram.
+**Isi diagram**
+
+- Satu blok `swimlane` per flow yang melibatkan user. Jika beberapa flow membentuk satu proses bisnis yang berurutan, gabungkan menjadi satu diagram.
 - Beri satu kalimat pengantar sebelum tiap diagram.
-- Tiap node adalah aktivitas aktor atau sistem yang terlihat oleh user. Langkah yang hanya terjadi di dalam sistem (baca tabel, transaksi, commit, rollback) digabung menjadi satu node seperti "Sistem menyimpan pengajuan".
+- Tiap node adalah aktivitas aktor atau sistem yang terlihat oleh user. Langkah yang hanya terjadi di dalam sistem (baca tabel, transaksi, commit, rollback) digabung menjadi satu node seperti "Menyimpan pengajuan".
 - Cabang keputusan yang ikut hanya yang hasilnya terlihat user, misalnya data tidak valid atau tidak berhak.
-- Pertahankan gaya sintaks template: label di dalam tanda kutip, bentuk `([..])` untuk awal/akhir, `{..}` untuk keputusan. Jangan memakai `subgraph`, styling, atau `click`; diagram ini akan diubah menjadi gambar dan bentuk sederhana paling aman.
 - Di bawah diagram terakhir tulis `**Notes:**` berisi penjelasan yang tidak muat di diagram, diambil dari *Alur Alternatif & Kegagalan* yang relevan bagi user. Jika tidak ada, tulis `N/A`.
 
 Flow yang seluruhnya berjalan tanpa user (scheduler, job) tetap digambarkan jika hasilnya sampai ke user, misalnya email yang mereka terima. Tulis dari sisi yang terlihat: kapan dijalankan dan apa yang diterima user.
+
+**Bentuk blok `swimlane`**
+
+````markdown
+```swimlane
+app: Internship Apps
+process: Partner Login
+
+lane Partner
+    S([Start])
+    Login[/Mengisi email dan password/]
+    Dash[Membuka Dashboard]
+    E([End])
+
+lane System
+    Check{Login valid?}
+    Msg[/Menampilkan pesan login gagal/]
+    Ok[Membuat sesi login]
+
+S --> Login --> Check
+Check -- Yes --> Ok --> Dash --> E
+Check -- No --> Msg --> Login
+```
+````
+
+- `app:` ← *Application Name* di *Identitas FRS*. Tampil tegak di sisi kiri diagram.
+- `process:` ← nama flow, tanpa awalan "Flow N". Tampil di baris paling atas, di atas nama lane. Untuk diagram gabungan, pakai nama proses bisnisnya.
+- `lane` ← satu lane per aktor yang terlibat di flow itu, dengan nama role seperti di *Aktor & Hak Akses*, ditulis dari kiri ke kanan mulai dari aktor yang memulai proses. Semua yang dikerjakan aplikasi, scheduler, atau job masuk ke satu lane bernama `System`. Role yang tidak muncul di flow itu tidak dibuatkan lane.
+- Node ditulis di bawah lane pelakunya, satu baris per node: id lalu bentuknya. Id hanya dipakai untuk menyambung alur (huruf, angka, garis bawah) dan tidak tampil di gambar.
+- Karena lane sudah menunjukkan pelakunya, teks node tidak diawali "Sistem ..." atau nama role.
+
+| Bentuk | Ditulis | Dipakai untuk |
+|---|---|---|
+| Awal | `S([Start])` | Titik mulai. Tulisannya harus `Start`, dan hanya ada satu. Diletakkan di lane aktor yang memulai proses, atau di lane `System` jika prosesnya dimulai jadwal. |
+| Akhir | `E([End])` | Titik selesai. Tulisannya harus `End`. Boleh lebih dari satu jika proses berakhir di tempat berbeda. |
+| Aktivitas | `A[teks]` | Pekerjaan yang dilakukan aktor atau sistem. |
+| Input / output | `B[/teks/]` | Data yang diisi atau dipilih aktor, dan data yang ditampilkan, dikirim, atau diterima: form, pesan, email, laporan. |
+| Decision | `C{teks?}` | Pertanyaan yang jawabannya ya atau tidak. |
+
+**Aturan notasi**
+
+Program menolak diagram yang melanggar aturan ini: diagramnya tidak digambar dan tidak masuk ke dokumen Word.
+
+- Decision punya tepat dua alur keluar, berlabel `Yes` dan `No`, ditulis `C -- Yes --> X` dan `C -- No --> Y`. Label lain tidak boleh, termasuk `Ya`/`Tidak`, `Berhasil`/`Gagal`, `Sudah`/`Belum`. Rumuskan ulang pertanyaannya sampai jawabannya ya atau tidak.
+- Decision dengan tiga hasil atau lebih di dokumen sumber (misalnya berhasil / gagal sementara / gagal permanen) dipecah menjadi beberapa decision berurutan yang masing-masing ya/tidak.
+- Selain decision, tiap node punya tepat satu alur keluar dan alurnya tidak berlabel. `End` tidak punya alur keluar, `Start` tidak punya alur masuk.
+- Semua node tersambung dari `Start`, dan semua jalur berakhir di `End`. Node "tampilkan pesan error" yang di dokumen sumber menjadi titik akhir harus disambung: ke `End`, atau kembali ke langkah yang diulang user.
+- Alur hanya menyambung id node yang sudah ditulis di bawah sebuah lane. Tidak ada `subgraph`, styling, atau bentuk lain.
+- Jangan memakai blok `mermaid` di 1.4 WORKFLOW.
 
 ### Aturan blok 2.1.N
 
@@ -136,7 +186,7 @@ Cara menggabungkan per bagian:
 | 1.1 OBJECTIVES | Numbered list, satu butir per pekerjaan. Jangan menulis tujuan payung yang tidak tertulis di dokumen mana pun. |
 | 1.2 BACKGROUND | Satu paragraf pendek per pekerjaan, diawali nama pekerjaan dalam huruf tebal. |
 | 1.3 SCOPE | Paragraf ringkasan menyebut semua pekerjaan. Satu tabel untuk semuanya: baris diurutkan per pekerjaan dan kolom *No* dinomori ulang dari 1. Jika FRS mencakup lebih dari satu aplikasi, kolom *Modul* diawali nama aplikasinya. Kalimat *Tidak termasuk* dan rekomendasi yang belum masuk scope digabung, dengan satu pengecualian: butir yang dikecualikan satu dokumen tetapi dikerjakan dokumen lain di FRS yang sama tidak boleh ditulis sebagai tidak termasuk. Hapus butir itu jika dokumen lain mencakupnya seluruhnya; jika hanya sebagian, tulis dengan batasnya (apa yang termasuk dan apa yang tidak). Cantumkan di laporan. |
-| 1.4 WORKFLOW | *Aturan Workflow* diterapkan per pekerjaan, dan kalimat pengantar tiap diagram menyebut nama pekerjaannya. Flow dari dokumen berbeda tidak digabung menjadi satu diagram, kecuali dokumen sumber sendiri menyatakan flow itu lanjutan dari flow di dokumen lain. `**Notes:**` tetap satu, di bawah diagram terakhir, dan tiap butirnya menyebut proses yang dimaksud. |
+| 1.4 WORKFLOW | *Aturan Workflow* diterapkan per pekerjaan, dan kalimat pengantar tiap diagram menyebut nama pekerjaannya. `app:` tiap diagram diambil dari *Identitas FRS* dokumen asal flow itu. Flow dari dokumen berbeda tidak digabung menjadi satu diagram, kecuali dokumen sumber sendiri menyatakan flow itu lanjutan dari flow di dokumen lain. `**Notes:**` tetap satu, di bawah diagram terakhir, dan tiap butirnya menyebut proses yang dimaksud. |
 | 1.5 ASSUMPTIONS | Satu numbered list, urut per pekerjaan. Asumsi yang hanya berlaku untuk satu pekerjaan dan menjadi ambigu di luar dokumennya diberi konteks halaman atau prosesnya. |
 | 1.6 USER | Satu baris per role per aplikasi. Role yang sama dari beberapa dokumen dilebur menjadi satu baris, dan deskripsinya merangkum apa yang dilakukan role itu di semua pekerjaan. Role bernama sama di aplikasi berbeda ditulis terpisah, dengan nama aplikasi di kolom *User / Role*. |
 | 1.7 TERMINOLOGY | Satu baris per istilah. Istilah yang artinya memang berbeda per aplikasi ditulis terpisah dengan nama aplikasinya. |
@@ -160,7 +210,7 @@ Untuk blok `2.1.N`:
 - Header kolom setiap tabel sama persis dengan template.
 - Tidak ada `{{...}}` selain `{{PERLU DIISI: ...}}`.
 - Tidak ada nama tabel, kolom, endpoint, atau istilah teknis yang terbawa. Cari backtick di keluaran: hampir semua backtick menandakan istilah teknis yang lolos.
-- Setiap blok `mermaid` adalah `flowchart` dengan sintaks yang valid.
+- Diagram di 1.4 WORKFLOW semuanya blok `swimlane`, tidak ada blok `mermaid`, dan tiap blok memenuhi *Aturan notasi*: ada `app:` dan `process:`, satu `Start`, tiap decision punya tepat satu `Yes` dan satu `No`, tidak ada alur berlabel selain itu, dan semua jalur sampai ke `End`.
 
 Tambahan untuk FRS gabungan:
 

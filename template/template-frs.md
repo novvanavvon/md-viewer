@@ -28,8 +28,9 @@ Karena itu ada aturan yang perlu dijaga:
    harus ada semua dan urutannya tetap.
 4. Ganti semua {{placeholder}}. Cari "{{" untuk memastikan tidak ada yang tertinggal.
    Jangan menulis placeholder dengan kurung siku <...> — itu dibaca sebagai tag HTML dan hilang saat dirender.
-5. Elemen yang dipakai hanya: paragraf, bullet/numbered list, tabel, blok mermaid, dan gambar
-   ![caption](path). Hindari HTML mentah, tabel di dalam tabel, dan heading tambahan di luar struktur ini.
+5. Elemen yang dipakai hanya: paragraf, bullet/numbered list, tabel, blok swimlane (untuk 1.4 WORKFLOW),
+   blok mermaid, dan gambar ![caption](path). Hindari HTML mentah, tabel di dalam tabel, dan heading
+   tambahan di luar struktur ini.
 6. Front matter di atas mengisi cover & header dokumen Word: "title" mengisi <Judul>, "frs_number" mengisi [num].
    Keduanya WAJIB diisi dan key-nya jangan diganti. Tanggal dokumen (<DateNow>) diisi otomatis dengan tanggal
    saat export, bukan dari "document_date".
@@ -68,18 +69,50 @@ Karena itu ada aturan yang perlu dijaga:
 
 ### 1.4 WORKFLOW
 
-<!-- Activity diagram alur bisnis (bukan alur teknis). Ganti isi blok mermaid di bawah.
-     Boleh lebih dari 1 diagram; beri 1 kalimat pengantar sebelum tiap diagram.
-     Alternatif: gambar, mis. ![Workflow pengajuan](images/workflow-pengajuan.png) -->
+<!-- Activity diagram alur bisnis (bukan alur teknis), digambar sebagai swimlane dengan blok "swimlane" di bawah.
+     Boleh lebih dari 1 diagram (1 diagram = 1 proses); beri 1 kalimat pengantar sebelum tiap diagram.
+     Jangan memakai blok mermaid di section ini: bentuknya tidak sesuai standar FRS.
 
-```mermaid
-flowchart TD
-    S(["Mulai"]) --> A["Aktor melakukan aktivitas 1"]
-    A --> B{"Kondisi terpenuhi?"}
-    B -- Ya --> C["Sistem melakukan aktivitas 2"]
-    B -- Tidak --> D["Sistem menampilkan pesan"]
-    D --> A
-    C --> E(["Selesai"])
+     Isi blok, berurutan:
+       app:      nama aplikasi, tampil tegak di sisi kiri.
+       process:  nama proses, tampil di baris paling atas (di atas nama lane).
+       lane X    1 lane per aktor, dari kiri ke kanan; lane sistem diberi nama "System".
+                 Di bawah tiap lane, tulis node yang dikerjakan aktor itu: id lalu bentuknya.
+       alur      A --> B, atau A -- Yes --> B untuk cabang decision.
+
+     Bentuk node (id bebas: huruf, angka, garis bawah; tidak tampil di gambar):
+       S([Start])     awal. Tulisannya harus "Start", hanya boleh 1.
+       E([End])       akhir. Tulisannya harus "End", boleh lebih dari 1.
+       A[teks]        aktivitas.
+       B[/teks/]      input / output: data yang diisi aktor atau yang ditampilkan/dikirim sistem.
+       C{teks?}       decision: pertanyaan yang jawabannya ya atau tidak.
+
+     Aturan (dicek viewer; diagram yang melanggar tidak digambar dan ditampilkan sebagai teks + pesan error):
+       - Decision punya tepat 2 alur keluar, berlabel Yes dan No. Tidak boleh label lain (Ya/Tidak, Berhasil/Gagal)
+         dan tidak boleh 3 cabang; pecah menjadi beberapa decision.
+       - Selain decision, tiap node punya tepat 1 alur keluar dan alurnya tidak berlabel. End tidak punya alur keluar.
+       - Semua node terhubung dari Start dan semua jalur berakhir di End.
+     Posisi node dan garis diatur otomatis supaya tidak saling menimpa. Jika hasilnya masih ramai,
+     ubah urutan lane atau pecah prosesnya menjadi 2 diagram. -->
+
+```swimlane
+app: {{Nama Aplikasi}}
+process: {{Nama Proses}}
+
+lane {{Aktor}}
+    S([Start])
+    A[/Aktor mengisi data/]
+    D[/Aktor menerima hasil/]
+    E([End])
+
+lane System
+    B{Data valid?}
+    M[/Menampilkan pesan/]
+    C[Menyimpan data]
+
+S --> A --> B
+B -- Yes --> C --> D --> E
+B -- No --> M --> A
 ```
 
 **Notes:**

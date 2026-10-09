@@ -60,6 +60,7 @@ Opening `index.html` directly is still supported through the manual file picker,
 - Parses a YAML-like front matter block at the beginning of the document.
 - Displays front matter as a dedicated key/value table above the document body.
 - Intercepts fenced Mermaid code blocks and renders them as diagrams.
+- Draws fenced `swimlane` code blocks as swimlane activity diagrams (see *Swimlane Activity Diagrams*).
 
 Example Mermaid block:
 
@@ -136,6 +137,58 @@ Each diagram supports:
 
 The diagram theme changes to a print-friendly light theme when the document is printed.
 
+### Swimlane Activity Diagrams
+
+A fenced `swimlane` block draws an activity diagram in the notation the FRS standard asks for. Mermaid has no swimlanes, so the viewer draws these itself. They get the same frame, pan and zoom controls as Mermaid diagrams, and are embedded in the Word exports as images.
+
+````markdown
+```swimlane
+app: Internship Apps
+process: Partner Login
+
+lane Partner
+    S([Start])
+    Login[/Partner Login/]
+    Dash[Go To Dashboard]
+    Jobs[Show the Application Job]
+    E([End])
+
+lane System
+    Check{Login Check?}
+    Ok[Success Login]
+
+S --> Login --> Check
+Check -- Yes --> Ok --> Dash --> Jobs --> E
+Check -- No --> Login
+```
+````
+
+The block has three parts:
+
+- `app:` is the application title, written upright along the left edge. `process:` is the process name, shown in the top row above the lane names.
+- Each `lane <name>` line opens a lane, from left to right. The nodes written under it belong to that lane: an id, then a shape.
+- The flows come last: `A --> B`, or `A -- Yes --> B` out of a decision. Flows can be chained, as in `A --> B --> C`.
+
+| Shape | Written as | Meaning |
+|-------|------------|---------|
+| Rounded | `S([Start])`, `E([End])` | Start and end of the process |
+| Rectangle | `A[text]` | Activity |
+| Parallelogram | `B[/text/]` | Input or output |
+| Diamond | `C{text?}` | Decision |
+
+Text may be quoted, and `<br/>` forces a line break; long text wraps by itself. A line that starts with `%%` is a comment.
+
+The notation is checked before the diagram is drawn:
+
+- There is exactly one `Start` and at least one `End`, and a rounded node reads `Start` or `End` and nothing else.
+- A decision has exactly two flows leaving it, labelled `Yes` and `No`.
+- Every other node has exactly one flow leaving it, without a label. No flow leaves `End` or enters `Start`.
+- Every node is reachable from `Start`, and every path reaches `End`.
+
+A block that breaks one of these rules is shown as its source text, with the reason in the banner at the top of the document, like a Mermaid block with a syntax error.
+
+Nodes and flows are placed automatically. Each step takes a row in the column of its lane, and a lane gets a second column where a decision branches inside it. Flows run on separate tracks between the nodes, so a flow never runs over a node, a label or another flow. Flows that end at the same node may merge, which is marked with a dot, and a flow that has to cross another one hops over it. If a diagram comes out crowded, change the order of the lanes or split the process into two diagrams.
+
 ### Printing
 
 The **Print** button prepares the document before calling `window.print()`.
@@ -188,7 +241,7 @@ Export Word turns the document that is currently open into a plain Word file. It
 - Front matter becomes a two-column table at the top.
 - Tables get a shaded header row that repeats on each page.
 - Code blocks are set in a monospace font on a light background.
-- Mermaid diagrams are rendered with the print theme and embedded as PNG images, scaled to fit the page.
+- Mermaid diagrams are rendered with the print theme and embedded as PNG images, scaled to fit the page. Swimlane diagrams are embedded the same way.
 - The page is A4 portrait. A document that contains a table with seven or more columns is laid out landscape instead.
 
 ### Make FRS Document
@@ -203,6 +256,7 @@ Make FRS Document takes the document that is currently open and places it into t
 - Markdown tables reuse the look of the template's Scope table, placed like the Terminology table: the same indent from the left margin and the same total width.
 - Tables in `1.7 TERMINOLOGY` are the exception: they use the Terminology table of the Scoping and Timeline template (plain borders, indented, bold centred header). The FRS template has no such table, so the viewer carries a copy of that layout; a template that has its own table under `TERMINOLOGY` supplies the layout itself.
 - Mermaid diagrams are rendered with the print theme and embedded as PNG images.
+- Swimlane diagrams are embedded as black-on-white PNG images. `1.4 WORKFLOW` is expected to use them: the dialog points out a Mermaid diagram in that section, and a swimlane that breaks the notation.
 - Images referenced with `![caption](path)` are embedded when the browser can fetch them.
 - A value left empty in the Markdown stays empty in Word. `template-frs.md` leaves Running ID, Application ID, Hierarchy ID - Name and the Screen Layout of each `2.1.N` block empty on purpose: they are filled in by hand in Word.
 
