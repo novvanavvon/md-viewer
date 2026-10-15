@@ -397,6 +397,9 @@
     .modal-btn.primary { color: var(--paper); background: var(--blue); border-color: var(--blue); }
     .modal-btn.primary:hover { background: var(--blue-dark); }
     .modal-btn:disabled { opacity: .45; cursor: default; }
+    .howto-box { width: min(720px, 100%); max-height: 90vh; }
+    .howto-diagram { padding: 16px; overflow: auto; text-align: center; background: #0b1a25; border: 1px solid rgba(127, 215, 223, .28); border-radius: 10px; }
+    .howto-diagram svg { max-width: 100%; height: auto; }
     .export-heading { margin: 0 0 6px; color: var(--blue-dark); font: 700 12px Arial, sans-serif; }
     .export-list { margin: 0 0 14px; padding-left: 18px; color: var(--ink); font: 12px/1.5 Arial, sans-serif; }
     .export-list.is-error { color: #ffb4b4; }
@@ -509,6 +512,19 @@
       <div class="modal-footer">
         <button class="modal-btn" id="filter-cancel" type="button">Cancel</button>
         <button class="modal-btn primary" id="filter-save" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="howto-modal" hidden>
+    <div class="modal-box howto-box" role="dialog" aria-modal="true" aria-labelledby="howto-modal-title">
+      <div class="modal-header">
+        <h2 id="howto-modal-title">How to use MD Viewer</h2>
+        <button class="modal-close" id="howto-modal-close" type="button" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-hint">From user requirement to the Internal IT document, then on to the FRS/TLS document or the programmer.</p>
+        <div class="howto-diagram" id="howto-diagram"></div>
       </div>
     </div>
   </div>
@@ -1747,10 +1763,51 @@
     function renderTemplateMenus() {
       const links = templateFiles.map(({ file, label }) => `<a class="menu-item" role="menuitem" href="${encodeURI(templatesPath + file)}" download="${escapeHtml(file)}" target="_blank" rel="noopener">${escapeHtml(label)}<small>${escapeHtml(file.slice(file.lastIndexOf('.')))}</small></a>`).join('');
       document.querySelectorAll('[data-template-menu]').forEach(menu => {
-        menu.innerHTML = `${links}<div class="menu-divider"></div><button class="menu-item" type="button" data-template-all>Download all<small>.zip</small></button>`;
+        menu.innerHTML = `${links}<div class="menu-divider"></div><button class="menu-item" type="button" data-template-all>Download all<small>.zip</small></button><button class="menu-item" type="button" data-template-howto>How to use</button>`;
         menu.querySelector('[data-template-all]').addEventListener('click', downloadAllTemplates);
+        menu.querySelector('[data-template-howto]').addEventListener('click', openHowToModal);
       });
     }
+
+    // the usage flow shown by Templates > How to use
+    const howToFlow = `flowchart TD
+    A[User Requirement] --> B{Current app context?}
+    B -->|SA familiar| C[Brief AI Agent on existing flow]
+    B -->|SA not familiar| F[AI Agent scans codebase]
+    B -->|New App| D
+    F --> G[Add flows outside codebase<br/>e.g. schedulers, via team input]
+    G --> C
+    C --> D[Explain requirement target to AI Agent]
+    D --> E[Generate Internal IT Doc/s .md]
+    E -->|Documentation| I[Merge docs into 'FRS content.md'<br/>using template prompt]
+    I --> J[Export to FRS/TLS template]
+    J --> K[Complete remaining info<br/>names, dates, timeline]
+    E -->|Development| L[Hand doc to programmer]
+    L --> M[Use as context for their AI Agent]`;
+    const howToModal = document.getElementById('howto-modal');
+    const howToDiagram = document.getElementById('howto-diagram');
+    let howToRendered = false;
+    async function renderHowToDiagram() {
+      if (howToRendered) return;
+      howToRendered = true;
+      if (!window.mermaid) { howToDiagram.textContent = 'The diagram library (Mermaid) could not be loaded.'; return; }
+      try {
+        mermaid.initialize({ startOnLoad: false, theme: 'base', themeVariables: screenDiagramTheme });
+        const { svg } = await mermaid.render('howto-diagram-svg', howToFlow);
+        howToDiagram.innerHTML = svg;
+      } catch (error) {
+        howToDiagram.textContent = `The diagram could not be drawn: ${error.message}`;
+      }
+    }
+    function openHowToModal() {
+      closeMenus();
+      howToModal.hidden = false;
+      renderHowToDiagram();
+    }
+    function closeHowToModal() { howToModal.hidden = true; }
+    document.getElementById('howto-modal-close').addEventListener('click', closeHowToModal);
+    howToModal.addEventListener('click', event => { if (event.target === howToModal) closeHowToModal(); });
+    document.addEventListener('keydown', event => { if (event.key === 'Escape' && !howToModal.hidden) closeHowToModal(); });
 
     async function downloadAllTemplates() {
       try {
